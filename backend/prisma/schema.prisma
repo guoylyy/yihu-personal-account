@@ -1,0 +1,301 @@
+// 个人财务系统 — 数据模型
+// 回答三个问题：我有多少（净资产）？钱去哪了（收支）？按计划走没有（预算）？
+// 约定沿用集团财务系统：金额 Decimal(18,2)、日期 @db.Date 按 UTC 零点、删除一律软删
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           BigInt   @id @default(autoincrement())
+  username     String   @unique @db.VarChar(50)
+  passwordHash String   @db.VarChar(100)
+  name         String   @db.VarChar(50)
+  /// 以虎 One 平台用户 id：个人账本只绑定一个人（第一次由平台管理员从工作台进入时绑定）
+  platformUserId Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// 资金账户：银行卡 / 微信 / 支付宝 / 现金 / 信用卡
+/// 余额 = 期初余额（期初日当天）+ 期初日之后的流水收入 − 支出；信用卡余额为负数表示欠款
+model Account {
+  id             BigInt    @id @default(autoincrement())
+  name           String    @db.VarChar(80)
+  type           String    @db.VarChar(20) // BANK WECHAT ALIPAY CASH CREDIT
+  institution    String?   @db.VarChar(80)
+  lastNo         String?   @db.VarChar(20) // 尾号
+  owner          String    @default("ME") @db.VarChar(20) // ME 我 / SPOUSE 配偶 / JOINT 共有
+  initialBalance Decimal   @default(0) @db.Decimal(18, 2)
+  initialDate    DateTime? @db.Date
+  balance        Decimal   @default(0) @db.Decimal(18, 2)
+  balanceAt      DateTime?
+  creditLimit    Decimal?  @db.Decimal(18, 2)
+  billDay        Int?
+  repayDay       Int?
+  aliases        String?   @db.VarChar(500) // 导入/AI 识别用别名，逗号分隔，如「泰隆银行储蓄卡(0595),0595」
+  status         String    @default("ACTIVE") @db.VarChar(20)
+  sort           Int       @default(0)
+  remark         String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  transactions Transaction[]
+}
+
+/// 收支科目，沿用 Q4 台账科目代码（A1~A11 必要 / B1~B2 弹性 / C 经营混账 / I1~I4 收入 / T 转移）
+model Category {
+  id        BigInt    @id @default(autoincrement())
+  code      String    @unique @db.VarChar(20)
+  name      String    @db.VarChar(50)
+  kind      String    @db.VarChar(20) // EXPENSE / INCOME / TRANSFER（转移：不计收支，如还信用卡、买理财、借出）
+  groupName String?   @db.VarChar(30) // 必要 / 弹性 / 经营 / 收入 / 转移
+  keywords  String?   @db.VarChar(1000) // 规则匹配关键字，逗号分隔
+  sort      Int       @default(0)
+  remark    String?   @db.VarChar(300)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  transactions Transaction[]
+  budgets      Budget[]
+  rules        CategoryRule[]
+}
+
+/// 学习到的分类规则：你在 AI 录入/导入时改过的分类，会按对方名记住，下次自动套用
+model CategoryRule {
+  id         BigInt   @id @default(autoincrement())
+  pattern    String   @db.VarChar(100)
+  categoryId BigInt
+  isBusiness Boolean  @default(false)
+  hits       Int      @default(0)
+  source     String   @default("LEARNED") @db.VarChar(20)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([pattern])
+}
+
+/// 个人流水
+model Transaction {
+  id            BigInt    @id @default(autoincrement())
+  code          String    @unique @db.VarChar(30)
+  txnDate       DateTime  @db.Date
+  txnTime       String?   @db.VarChar(8)
+  direction     String    @db.VarChar(5) // IN / OUT
+  amount        Decimal   @db.Decimal(18, 2)
+  accountId     BigInt?
+  categoryId    BigInt?
+  counterparty  String?   @db.VarChar(120)
+  description   String?   @db.VarChar(500)
+  channel       String?   @db.VarChar(20) // 微信 / 支付宝 / 银行 / 现金 / 信用卡
+  payMethod     String?   @db.VarChar(80) // 原始支付方式文本
+  isBusiness    Boolean   @default(false) // 公司款（C 类），月度剥离，不计入个人支出
+  businessOrg   String?   @db.VarChar(50) // 属于哪家公司
+  bizStatus     String?   @db.VarChar(20) // PENDING 待剥离 / REIMBURSED 已报销回款 / WRITTEN_OFF 不追回
+  transferGroup String?   @db.VarChar(40) // 账户互转的两条流水共用
+  source        String    @default("MANUAL") @db.VarChar(20) // MANUAL / AI / IMPORT / SYSTEM
+  importBatch   String?   @db.VarChar(40)
+  externalId    String?   @db.VarChar(120) // 导入查重键
+  refType       String?   @db.VarChar(20) // HOLDING_TRADE / LOAN_REPAY …
+  refId         BigInt?
+  remark        String?   @db.VarChar(500)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  account  Account?  @relation(fields: [accountId], references: [id])
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([txnDate])
+  @@index([externalId])
+}
+
+/// 投资持仓：股票 / 基金 / 理财 / 定存 / 储蓄险 / 股权 / 其他
+model Holding {
+  id          BigInt    @id @default(autoincrement())
+  type        String    @db.VarChar(20) // STOCK FUND WEALTH DEPOSIT INSURANCE EQUITY OTHER
+  code        String?   @db.VarChar(30)
+  name        String    @db.VarChar(80)
+  market      String?   @db.VarChar(20) // A / HK / US
+  platform    String?   @db.VarChar(50) // 券商 / 且慢 / 银行
+  quantity    Decimal   @default(0) @db.Decimal(20, 4)
+  costAmount  Decimal   @default(0) @db.Decimal(18, 2) // 持仓成本（剩余本金）
+  price       Decimal?  @db.Decimal(18, 4)
+  marketValue Decimal   @default(0) @db.Decimal(18, 2)
+  realizedPnl Decimal   @default(0) @db.Decimal(18, 2) // 已实现收益（卖出差价 + 分红）
+  ratio       Decimal?  @db.Decimal(7, 4) // 股权持股比例 %
+  valuationNote String? @db.VarChar(200) // 估值口径
+  valuedAt    DateTime? @db.Date
+  maturityDate DateTime? @db.Date
+  annualRate  Decimal?  @db.Decimal(7, 4)
+  includeInNetWorth Boolean @default(true)
+  status      String    @default("HOLDING") @db.VarChar(20) // HOLDING / CLOSED
+  remark      String?   @db.VarChar(500)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  trades HoldingTrade[]
+}
+
+model HoldingTrade {
+  id            BigInt    @id @default(autoincrement())
+  holdingId     BigInt
+  tradeDate     DateTime  @db.Date
+  action        String    @db.VarChar(20) // BUY SELL DIVIDEND VALUATION
+  quantity      Decimal?  @db.Decimal(20, 4)
+  price         Decimal?  @db.Decimal(18, 4)
+  amount        Decimal   @default(0) @db.Decimal(18, 2) // 成交金额 / 分红金额 / 新市值
+  fee           Decimal   @default(0) @db.Decimal(18, 2)
+  pnl           Decimal?  @db.Decimal(18, 2) // 本笔实现收益
+  cashAccountId BigInt?
+  transactionId BigInt?
+  source        String    @default("MANUAL") @db.VarChar(20)
+  remark        String?   @db.VarChar(300)
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+
+  holding Holding @relation(fields: [holdingId], references: [id])
+}
+
+/// 固定资产：房产 / 车辆 / 大件
+model FixedAsset {
+  id            BigInt    @id @default(autoincrement())
+  type          String    @db.VarChar(20) // PROPERTY VEHICLE OTHER
+  name          String    @db.VarChar(80)
+  owner         String    @default("ME") @db.VarChar(20)
+  address       String?   @db.VarChar(200)
+  purchaseDate  DateTime? @db.Date
+  purchasePrice Decimal?  @db.Decimal(18, 2)
+  currentValue  Decimal   @default(0) @db.Decimal(18, 2)
+  valuedAt      DateTime? @db.Date
+  valuationNote String?   @db.VarChar(200)
+  includeInNetWorth Boolean @default(true)
+  status        String    @default("HOLDING") @db.VarChar(20) // HOLDING / SOLD
+  remark        String?   @db.VarChar(500)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  valuations AssetValuation[]
+}
+
+model AssetValuation {
+  id        BigInt   @id @default(autoincrement())
+  assetId   BigInt
+  valDate   DateTime @db.Date
+  value     Decimal  @db.Decimal(18, 2)
+  note      String?  @db.VarChar(200)
+  source    String   @default("MANUAL") @db.VarChar(20)
+  createdAt DateTime @default(now())
+
+  asset FixedAsset @relation(fields: [assetId], references: [id])
+}
+
+/// 个人借贷：LEND 我借出（应收，资产）/ BORROW 我借入（负债：房贷、个人借款）
+model Loan {
+  id              BigInt    @id @default(autoincrement())
+  direction       String    @db.VarChar(10) // LEND / BORROW
+  kind            String    @default("PERSONAL") @db.VarChar(20) // PERSONAL COMPANY MORTGAGE CAR CONSUMER OTHER
+  counterparty    String    @db.VarChar(80)
+  principal       Decimal   @db.Decimal(18, 2)
+  balance         Decimal   @db.Decimal(18, 2) // 未还本金
+  annualRate      Decimal?  @db.Decimal(7, 4)
+  startDate       DateTime? @db.Date
+  dueDate         DateTime? @db.Date
+  monthlyPayment  Decimal?  @db.Decimal(18, 2)
+  assetId         BigInt?   // 关联固定资产（房贷 → 房产）
+  contractNo      String?   @db.VarChar(50)
+  includeInNetWorth Boolean @default(true) // 方向/金额待核实时可暂不计入
+  status          String    @default("ACTIVE") @db.VarChar(20) // ACTIVE / SETTLED / TO_CONFIRM
+  remark          String?   @db.VarChar(500)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  repayments LoanRepayment[]
+}
+
+model LoanRepayment {
+  id            BigInt    @id @default(autoincrement())
+  loanId        BigInt
+  repayDate     DateTime  @db.Date
+  principalPart Decimal   @default(0) @db.Decimal(18, 2)
+  interestPart  Decimal   @default(0) @db.Decimal(18, 2)
+  accountId     BigInt?
+  source        String    @default("MANUAL") @db.VarChar(20)
+  remark        String?   @db.VarChar(300)
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+
+  loan Loan @relation(fields: [loanId], references: [id])
+}
+
+/// 年度预算（按科目，月度额 × 12 或年度额）
+model Budget {
+  id            BigInt   @id @default(autoincrement())
+  year          Int
+  categoryId    BigInt
+  monthlyAmount Decimal  @default(0) @db.Decimal(18, 2)
+  annualAmount  Decimal  @default(0) @db.Decimal(18, 2)
+  remark        String?  @db.VarChar(300)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([year, categoryId])
+}
+
+/// 月度净资产快照（月结时生成，结构化保存明细便于回看）
+model NetWorthSnapshot {
+  id          BigInt   @id @default(autoincrement())
+  period      String   @unique @db.VarChar(7)
+  cash        Decimal  @db.Decimal(18, 2)
+  investments Decimal  @db.Decimal(18, 2)
+  equity      Decimal  @db.Decimal(18, 2)
+  receivables Decimal  @db.Decimal(18, 2)
+  fixedAssets Decimal  @db.Decimal(18, 2)
+  totalAssets Decimal  @db.Decimal(18, 2)
+  liabilities Decimal  @db.Decimal(18, 2)
+  netWorth    Decimal  @db.Decimal(18, 2)
+  income      Decimal  @default(0) @db.Decimal(18, 2)
+  expense     Decimal  @default(0) @db.Decimal(18, 2)
+  detail      Json?
+  remark      String?  @db.VarChar(500)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// AI 录入记录：原文、解析结果、最终入账情况，便于回看和改进
+model AiEntryLog {
+  id        BigInt   @id @default(autoincrement())
+  input     String   @db.Text
+  hasImage  Boolean  @default(false)
+  provider  String?  @db.VarChar(30)
+  output    Json?
+  committed Json?
+  error     String?  @db.VarChar(1000)
+  ms        Int?
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  action    String   @db.VarChar(20)
+  entity    String   @db.VarChar(50)
+  entityId  String?  @db.VarChar(40)
+  summary   String?  @db.VarChar(500)
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+}

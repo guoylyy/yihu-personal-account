@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+# 个人数据（账单、种子）绝不进镜像
+backend/data
+backend/uploads
+backend/scripts
+.git
+.claude
+*.log

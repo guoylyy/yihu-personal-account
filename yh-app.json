@@ -1,0 +1,21 @@
+{
+  "code": "personal-finance",
+  "name": "个人财务",
+  "icon": "🐷",
+  "category": "财务",
+  "description": "私人账本：净资产、收支、预算、投资持仓、借贷往来、AI 记账",
+  "port": 3020,
+  "health": "/api/health",
+  "callback": "/sso/callback",
+  "entry": "/",
+  "mcp": "/mcp",
+  "database": true,
+  "memory": "384m",
+  "visibility": { "roles": ["ADMIN"] },
+  "isDefault": false,
+  "env": {},
+  "deploy": {
+    "branch": "release",
+    "mode": "auto"
+  }
+}
