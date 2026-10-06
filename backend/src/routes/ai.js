@@ -6,6 +6,7 @@ import { ok, badRequest, wrap } from '../lib/response.js'
 import { aiStatus, llmJSON } from '../lib/llm.js'
 import { parseEntry, commitItems, resolveItems, ITEM_TYPES } from '../lib/aiEntry.js'
 import { balanceSheet, periodStats } from '../lib/networth.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 6 } })
@@ -32,7 +33,7 @@ router.post('/commit', wrap(async (req, res) => {
 }))
 
 router.get('/logs', wrap(async (req, res) => {
-  const list = await prisma.aiEntryLog.findMany({ orderBy: { id: 'desc' }, take: 50 })
+  const list = await prisma.aiEntryLog.findMany({ where: { userId: currentUserId() }, orderBy: { id: 'desc' }, take: 50 })
   return ok(res, { list, total: list.length })
 }))
 
@@ -44,7 +45,7 @@ router.post('/ask', wrap(async (req, res) => {
   const [sheet, stats, budgets] = await Promise.all([
     balanceSheet(),
     Promise.all(periods.map((p) => periodStats(p))),
-    prisma.budget.findMany({ where: { year: dayjs().year() }, include: { category: true } })
+    prisma.budget.findMany({ where: { year: dayjs().year(), userId: currentUserId() }, include: { category: true } })
   ])
   const context = {
     资产负债表: sheet,

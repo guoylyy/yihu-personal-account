@@ -12,13 +12,14 @@ import { codeAllocator } from '../lib/code.js'
 import { toDate, periodRange } from '../lib/period.js'
 import { logAudit } from '../lib/audit.js'
 import { round2 } from '../lib/money.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
 const include = { account: { select: { id: true, name: true, type: true } }, category: { select: { id: true, code: true, name: true, kind: true } } }
 
 function buildWhere(q) {
-  const where = { deletedAt: null }
+  const where = { deletedAt: null, userId: currentUserId() }
   if (q.account_id) where.accountId = BigInt(q.account_id)
   if (q.category_id) where.categoryId = q.category_id === 'none' ? null : BigInt(q.category_id)
   if (q.direction) where.direction = q.direction
@@ -64,7 +65,7 @@ const EDITABLE = ['txnDate', 'txnTime', 'direction', 'amount', 'accountId', 'cat
 
 router.put('/:id', wrap(async (req, res) => {
   const id = BigInt(req.params.id)
-  const before = await prisma.transaction.findFirst({ where: { id, deletedAt: null } })
+  const before = await prisma.transaction.findFirst({ where: { id, userId: currentUserId(), deletedAt: null } })
   if (!before) return notFound(res)
   const data = {}
   for (const k of EDITABLE) {
@@ -86,13 +87,13 @@ router.put('/:id', wrap(async (req, res) => {
 
 router.delete('/:id', wrap(async (req, res) => {
   const id = BigInt(req.params.id)
-  const before = await prisma.transaction.findFirst({ where: { id, deletedAt: null } })
+  const before = await prisma.transaction.findFirst({ where: { id, userId: currentUserId(), deletedAt: null } })
   if (!before) return notFound(res)
   // 互转的两条一起作废，否则一边余额会悬空
   const targets = before.transferGroup
-    ? await prisma.transaction.findMany({ where: { transferGroup: before.transferGroup, deletedAt: null } })
+    ? await prisma.transaction.findMany({ where: { userId: currentUserId(), transferGroup: before.transferGroup, deletedAt: null } })
     : [before]
-  await prisma.transaction.updateMany({ where: { id: { in: targets.map((t) => t.id) } }, data: { deletedAt: new Date() } })
+  await prisma.transaction.updateMany({ where: { userId: currentUserId(), id: { in: targets.map((t) => t.id) } }, data: { deletedAt: new Date() } })
   for (const a of new Set(targets.map((t) => t.accountId).filter(Boolean).map(String))) await recalcAccountBalance(a)
   await logAudit({ action: 'DELETE', entity: '流水', entityId: id, summary: `作废 ${targets.map((t) => t.code).join('、')}`, before })
   return ok(res, { count: targets.length })
@@ -109,13 +110,14 @@ router.post('/batch', wrap(async (req, res) => {
   if (bizStatus !== undefined && isBusiness === undefined) data.bizStatus = bizStatus
   if (accountId !== undefined) data.accountId = accountId ? BigInt(accountId) : null
   const bigIds = ids.map((i) => BigInt(i))
-  const before = await prisma.transaction.findMany({ where: { id: { in: bigIds } } })
-  await prisma.transaction.updateMany({ where: { id: { in: bigIds } }, data })
+  const userId = currentUserId()
+  const before = await prisma.transaction.findMany({ where: { userId, id: { in: bigIds } } })
+  await prisma.transaction.updateMany({ where: { userId, id: { in: bigIds } }, data })
   if (accountId !== undefined) {
     for (const a of new Set([...before.map((t) => t.accountId), accountId].filter(Boolean).map(String))) await recalcAccountBalance(a)
   }
   if (learn) {
-    const after = await prisma.transaction.findMany({ where: { id: { in: bigIds } } })
+    const after = await prisma.transaction.findMany({ where: { userId, id: { in: bigIds } } })
     for (const cp of new Set(after.map((t) => t.counterparty).filter(Boolean))) {
       const t = after.find((x) => x.counterparty === cp)
       if (t.categoryId) await learnRule(cp, t.categoryId, t.isBusiness)
@@ -131,11 +133,12 @@ router.post('/import/preview', upload.single('file'), wrap(async (req, res) => {
   if (!req.file) return badRequest(res, '请上传账单文件')
   const filename = Buffer.from(req.file.originalname, 'latin1').toString('utf8')
   const { channel, rows } = parseBill(req.file.buffer, filename)
-  const cats = await prisma.category.findMany({ where: { deletedAt: null } })
+  const cats = await prisma.category.findMany({ where: { userId: currentUserId(), deletedAt: null } })
   const out = []
   for (const r of rows) {
     const dup = await prisma.transaction.findFirst({
       where: {
+        userId: currentUserId(),
         deletedAt: null,
         OR: [
           { externalId: r.externalId },
@@ -172,7 +175,7 @@ router.post('/import/preview', upload.single('file'), wrap(async (req, res) => {
 router.post('/import/ai-classify', wrap(async (req, res) => {
   const rows = req.body.rows || []
   const result = await aiClassifyRows(rows)
-  const cats = await prisma.category.findMany({ where: { deletedAt: null } })
+  const cats = await prisma.category.findMany({ where: { userId: currentUserId(), deletedAt: null } })
   return ok(res, result.map((r) => {
     const c = cats.find((x) => x.code === r.categoryCode)
     return { i: r.i, categoryId: c ? String(c.id) : null, categoryCode: r.categoryCode, isBusiness: !!r.isBusiness, businessOrg: r.businessOrg || null }
@@ -204,8 +207,8 @@ router.post('/import/commit', wrap(async (req, res) => {
 }))
 
 router.delete('/import/:batch', wrap(async (req, res) => {
-  const list = await prisma.transaction.findMany({ where: { importBatch: req.params.batch, deletedAt: null } })
-  await prisma.transaction.updateMany({ where: { importBatch: req.params.batch }, data: { deletedAt: new Date() } })
+  const list = await prisma.transaction.findMany({ where: { userId: currentUserId(), importBatch: req.params.batch, deletedAt: null } })
+  await prisma.transaction.updateMany({ where: { userId: currentUserId(), importBatch: req.params.batch }, data: { deletedAt: new Date() } })
   for (const a of new Set(list.map((t) => t.accountId).filter(Boolean).map(String))) await recalcAccountBalance(a)
   await logAudit({ action: 'DELETE', entity: '流水', summary: `撤销导入批次 ${req.params.batch}（${list.length} 笔）` })
   return ok(res, { count: list.length })
@@ -213,7 +216,7 @@ router.delete('/import/:batch', wrap(async (req, res) => {
 
 router.get('/import/batches', wrap(async (req, res) => {
   const rows = await prisma.transaction.groupBy({
-    by: ['importBatch'], where: { importBatch: { not: null }, deletedAt: null },
+    by: ['importBatch'], where: { userId: currentUserId(), importBatch: { not: null }, deletedAt: null },
     _count: true, _min: { txnDate: true }, _max: { txnDate: true, createdAt: true }
   })
   return ok(res, rows.sort((a, b) => (b._max.createdAt > a._max.createdAt ? 1 : -1)))

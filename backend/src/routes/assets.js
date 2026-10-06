@@ -3,11 +3,12 @@ import prisma from '../lib/prisma.js'
 import { crudRouter } from '../lib/crud.js'
 import { ok, badRequest, wrap } from '../lib/response.js'
 import { assetValuation } from '../lib/ledger.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 
 router.get('/:id/valuations', wrap(async (req, res) => {
-  const list = await prisma.assetValuation.findMany({ where: { assetId: BigInt(req.params.id) }, orderBy: { valDate: 'desc' } })
+  const list = await prisma.assetValuation.findMany({ where: { userId: currentUserId(), assetId: BigInt(req.params.id) }, orderBy: { valDate: 'desc' } })
   return ok(res, { list, total: list.length })
 }))
 

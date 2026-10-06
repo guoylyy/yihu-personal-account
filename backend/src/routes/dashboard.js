@@ -4,18 +4,20 @@ import prisma from '../lib/prisma.js'
 import { ok, wrap } from '../lib/response.js'
 import { balanceSheet, periodStats } from '../lib/networth.js'
 import { lastPeriods } from '../lib/period.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 
 router.get('/', wrap(async (req, res) => {
   const period = req.query.period || dayjs().format('YYYY-MM')
+  const userId = currentUserId()
   const [sheet, month, snapshots, accounts, pendingBiz, uncategorized] = await Promise.all([
     balanceSheet(),
     periodStats(period),
-    prisma.netWorthSnapshot.findMany({ orderBy: { period: 'asc' }, take: 24 }),
-    prisma.account.findMany({ where: { deletedAt: null, status: 'ACTIVE' }, orderBy: [{ sort: 'asc' }, { id: 'asc' }] }),
-    prisma.transaction.aggregate({ where: { deletedAt: null, isBusiness: true, bizStatus: 'PENDING' }, _sum: { amount: true }, _count: true }),
-    prisma.transaction.count({ where: { deletedAt: null, categoryId: null } })
+    prisma.netWorthSnapshot.findMany({ where: { userId }, orderBy: { period: 'asc' }, take: 24 }),
+    prisma.account.findMany({ where: { userId, deletedAt: null, status: 'ACTIVE' }, orderBy: [{ sort: 'asc' }, { id: 'asc' }] }),
+    prisma.transaction.aggregate({ where: { userId, deletedAt: null, isBusiness: true, bizStatus: 'PENDING' }, _sum: { amount: true }, _count: true }),
+    prisma.transaction.count({ where: { userId, deletedAt: null, categoryId: null } })
   ])
   const trend = []
   for (const p of lastPeriods(12, dayjs(`${period}-01`))) {

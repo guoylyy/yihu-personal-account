@@ -3,13 +3,15 @@
 // 余额对不上时用「校准余额」把期初日挪到今天，而不是去改流水
 import prisma from './prisma.js'
 import { Prisma } from '@prisma/client'
+import { resolveUid } from './tenant.js'
 
-export async function recalcAccountBalance(accountId) {
+export async function recalcAccountBalance(accountId, uid) {
   if (!accountId) return null
   const id = BigInt(accountId)
-  const account = await prisma.account.findUnique({ where: { id } })
+  const userId = resolveUid(uid)
+  const account = await prisma.account.findFirst({ where: { id, userId } })
   if (!account) return null
-  const where = { accountId: id, deletedAt: null }
+  const where = { userId, accountId: id, deletedAt: null }
   if (account.initialDate) where.txnDate = { gt: account.initialDate }
   const rows = await prisma.transaction.groupBy({ by: ['direction'], where, _sum: { amount: true } })
   const sum = (d) => new Prisma.Decimal(rows.find((r) => r.direction === d)?._sum.amount || 0)
@@ -17,7 +19,8 @@ export async function recalcAccountBalance(accountId) {
   return prisma.account.update({ where: { id }, data: { balance, balanceAt: new Date() } })
 }
 
-export async function recalcAll() {
-  const list = await prisma.account.findMany({ where: { deletedAt: null }, select: { id: true } })
-  for (const a of list) await recalcAccountBalance(a.id)
+export async function recalcAll(uid) {
+  const userId = resolveUid(uid)
+  const list = await prisma.account.findMany({ where: { userId, deletedAt: null }, select: { id: true } })
+  for (const a of list) await recalcAccountBalance(a.id, userId)
 }

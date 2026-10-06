@@ -8,6 +8,7 @@ import { toDate } from './period.js'
 import { categoryByCode } from './classify.js'
 import { logAudit } from './audit.js'
 import { round2 } from './money.js'
+import { resolveUid, tenantWhere } from './tenant.js'
 import crypto from 'node:crypto'
 
 const D = (v) => new Prisma.Decimal(v || 0)
@@ -18,12 +19,14 @@ export async function createTransaction(input, { source = 'MANUAL', recalc = tru
   if (!amount) throw new Error('金额不能为 0')
   if (!['IN', 'OUT'].includes(input.direction)) throw new Error('收支方向只能是 IN / OUT')
   const txnDate = toDate(input.txnDate || new Date())
+  const userId = resolveUid(input.userId)
   let categoryId = big(input.categoryId)
-  if (!categoryId && input.categoryCode) categoryId = (await categoryByCode(input.categoryCode))?.id || null
+  if (!categoryId && input.categoryCode) categoryId = (await categoryByCode(input.categoryCode, userId))?.id || null
 
   const row = await prisma.transaction.create({
     data: {
-      code: input.code || (await nextTxnCode(txnDate)),
+      userId,
+      code: input.code || (await nextTxnCode(txnDate, userId)),
       txnDate,
       txnTime: input.txnTime || null,
       direction: input.direction,
@@ -46,7 +49,7 @@ export async function createTransaction(input, { source = 'MANUAL', recalc = tru
       remark: input.remark || null
     }
   })
-  if (recalc && row.accountId) await recalcAccountBalance(row.accountId)
+  if (recalc && row.accountId) await recalcAccountBalance(row.accountId, userId)
   return row
 }
 
@@ -55,8 +58,8 @@ export async function createTransfer({ fromAccountId, toAccountId, amount, txnDa
   if (!fromAccountId || !toAccountId) throw new Error('转账需要转出和转入两个账户')
   if (String(fromAccountId) === String(toAccountId)) throw new Error('转出和转入不能是同一个账户')
   const [from, to] = await Promise.all([
-    prisma.account.findUnique({ where: { id: BigInt(fromAccountId) } }),
-    prisma.account.findUnique({ where: { id: BigInt(toAccountId) } })
+    prisma.account.findFirst({ where: tenantWhere({ id: BigInt(fromAccountId) }) }),
+    prisma.account.findFirst({ where: tenantWhere({ id: BigInt(toAccountId) }) })
   ])
   const code = categoryCode || (to.type === 'CREDIT' ? 'T2' : 'T1')
   const group = `TR-${crypto.randomBytes(5).toString('hex')}`
@@ -69,9 +72,10 @@ export async function createTransfer({ fromAccountId, toAccountId, amount, txnDa
 /** 余额校准：以今天（或指定日）的真实余额为新期初，之前的流水保留但不再影响余额 */
 export async function calibrateBalance(accountId, actual, date) {
   const id = BigInt(accountId)
-  const before = await prisma.account.findUnique({ where: { id } })
+  const before = await prisma.account.findFirst({ where: tenantWhere({ id }) })
+  if (!before) throw new Error('账户不存在')
   await prisma.account.update({ where: { id }, data: { initialBalance: round2(actual), initialDate: toDate(date || new Date()) } })
-  const after = await recalcAccountBalance(id)
+  const after = await recalcAccountBalance(id, before.userId)
   await logAudit({ action: 'CALIBRATE', entity: 'account', entityId: id, summary: `${before.name} 余额校准 ${before.balance} → ${actual}`, before, after })
   return after
 }
@@ -93,7 +97,8 @@ export function holdingMarketValue(h) {
  * VALUATION 更新现价/市值（理财、股权等没有份额的直接给市值）
  */
 export async function holdingTrade(input, { source = 'MANUAL' } = {}) {
-  const h = await prisma.holding.findFirst({ where: { id: BigInt(input.holdingId), deletedAt: null } })
+  const userId = resolveUid(input.userId)
+  const h = await prisma.holding.findFirst({ where: tenantWhere({ id: BigInt(input.holdingId), deletedAt: null }) })
   if (!h) throw new Error('持仓不存在')
   const action = input.action
   const qty = input.quantity != null && input.quantity !== '' ? Number(input.quantity) : null
@@ -151,12 +156,13 @@ export async function holdingTrade(input, { source = 'MANUAL' } = {}) {
   await prisma.holding.update({ where: { id: h.id }, data })
   const trade = await prisma.holdingTrade.create({
     data: {
-      holdingId: h.id, tradeDate, action, quantity: qty, price, amount: amount || 0, fee, pnl,
+      userId, holdingId: h.id, tradeDate, action, quantity: qty, price, amount: amount || 0, fee, pnl,
       cashAccountId: big(input.cashAccountId), source, remark: input.remark || null
     }
   })
   if (cash && input.cashAccountId) {
     const txn = await createTransaction({
+      userId,
       direction: cash.direction, amount: cash.amount, txnDate: tradeDate, accountId: input.cashAccountId,
       categoryCode: cash.categoryCode, counterparty: h.platform || h.name,
       description: `${{ BUY: '买入', SELL: '卖出', DIVIDEND: '分红' }[action]} ${h.name}${qty ? ` ${qty}` : ''}`,
@@ -171,10 +177,11 @@ export async function holdingTrade(input, { source = 'MANUAL' } = {}) {
 // ─────────────── 固定资产 ───────────────
 
 export async function assetValuation({ assetId, value, valDate, note }, { source = 'MANUAL' } = {}) {
-  const a = await prisma.fixedAsset.findFirst({ where: { id: BigInt(assetId), deletedAt: null } })
+  const userId = resolveUid()
+  const a = await prisma.fixedAsset.findFirst({ where: tenantWhere({ id: BigInt(assetId), deletedAt: null }) })
   if (!a) throw new Error('资产不存在')
   const d = toDate(valDate || new Date())
-  const v = await prisma.assetValuation.create({ data: { assetId: a.id, valDate: d, value: round2(value), note: note || null, source } })
+  const v = await prisma.assetValuation.create({ data: { userId, assetId: a.id, valDate: d, value: round2(value), note: note || null, source } })
   await prisma.fixedAsset.update({ where: { id: a.id }, data: { currentValue: round2(value), valuedAt: d, valuationNote: note || a.valuationNote } })
   await logAudit({ action: 'VALUATION', entity: 'fixedAsset', entityId: a.id, summary: `${a.name} 估值 ${a.currentValue} → ${value}` })
   return v
@@ -188,14 +195,15 @@ export async function assetValuation({ assetId, value, valDate, note }, { source
  * LEND（别人欠我）：本金 → 账户 IN（T5），利息 → 账户 IN（I4 其他收入）
  */
 export async function loanRepay(input, { source = 'MANUAL' } = {}) {
-  const loan = await prisma.loan.findFirst({ where: { id: BigInt(input.loanId), deletedAt: null } })
+  const userId = resolveUid(input.userId)
+  const loan = await prisma.loan.findFirst({ where: tenantWhere({ id: BigInt(input.loanId), deletedAt: null }) })
   if (!loan) throw new Error('借贷记录不存在')
   const principal = round2(input.principalPart || 0)
   const interest = round2(input.interestPart || 0)
   if (!principal && !interest) throw new Error('本金和利息至少填一个')
   const repayDate = toDate(input.repayDate || new Date())
   const rep = await prisma.loanRepayment.create({
-    data: { loanId: loan.id, repayDate, principalPart: principal, interestPart: interest, accountId: big(input.accountId), source, remark: input.remark || null }
+    data: { userId, loanId: loan.id, repayDate, principalPart: principal, interestPart: interest, accountId: big(input.accountId), source, remark: input.remark || null }
   })
   const balance = Prisma.Decimal.max(D(loan.balance).minus(principal), 0)
   await prisma.loan.update({ where: { id: loan.id }, data: { balance, status: balance.isZero() ? 'SETTLED' : loan.status } })
@@ -203,7 +211,7 @@ export async function loanRepay(input, { source = 'MANUAL' } = {}) {
   if (input.accountId) {
     const dir = loan.direction === 'BORROW' ? 'OUT' : 'IN'
     const label = loan.direction === 'BORROW' ? '还款' : '回款'
-    const common = { direction: dir, txnDate: repayDate, accountId: input.accountId, counterparty: loan.counterparty, refType: 'LOAN_REPAY', refId: rep.id }
+    const common = { userId, direction: dir, txnDate: repayDate, accountId: input.accountId, counterparty: loan.counterparty, refType: 'LOAN_REPAY', refId: rep.id }
     if (principal) await createTransaction({ ...common, amount: principal, categoryCode: 'T5', description: `${label}本金` }, { source })
     if (interest) {
       const code = loan.direction === 'LEND' ? 'I4' : loan.kind === 'MORTGAGE' ? 'A9' : 'B1'

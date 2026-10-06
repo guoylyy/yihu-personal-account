@@ -1,6 +1,7 @@
 // 个人财务系统 — 数据模型
 // 回答三个问题：我有多少（净资产）？钱去哪了（收支）？按计划走没有（预算）？
 // 约定沿用集团财务系统：金额 Decimal(18,2)、日期 @db.Date 按 UTC 零点、删除一律软删
+// 多租户：每个以虎 One 平台用户一本独立账本，租户数据一律带 userId 隔离
 
 generator client {
   provider = "prisma-client-js"
@@ -16,16 +17,31 @@ model User {
   username     String   @unique @db.VarChar(50)
   passwordHash String   @db.VarChar(100)
   name         String   @db.VarChar(50)
-  /// 以虎 One 平台用户 id：个人账本只绑定一个人（第一次由平台管理员从工作台进入时绑定）
-  platformUserId Int?
+  /// 以虎 One 平台用户 id：每个平台用户首次进入自动建号（platform_<id>），不再只绑一个人
+  platformUserId Int?   @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  accounts         Account[]
+  categories       Category[]
+  categoryRules    CategoryRule[]
+  transactions     Transaction[]
+  holdings         Holding[]
+  holdingTrades    HoldingTrade[]
+  fixedAssets      FixedAsset[]
+  assetValuations  AssetValuation[]
+  loans            Loan[]
+  loanRepayments   LoanRepayment[]
+  budgets          Budget[]
+  netWorthSnapshots NetWorthSnapshot[]
+  aiEntryLogs      AiEntryLog[]
 }
 
 /// 资金账户：银行卡 / 微信 / 支付宝 / 现金 / 信用卡
 /// 余额 = 期初余额（期初日当天）+ 期初日之后的流水收入 − 支出；信用卡余额为负数表示欠款
 model Account {
   id             BigInt    @id @default(autoincrement())
+  userId         BigInt?
   name           String    @db.VarChar(80)
   type           String    @db.VarChar(20) // BANK WECHAT ALIPAY CASH CREDIT
   institution    String?   @db.VarChar(80)
@@ -46,13 +62,18 @@ model Account {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
+  user         User?         @relation(fields: [userId], references: [id])
   transactions Transaction[]
+
+  @@index([userId])
 }
 
 /// 收支科目，沿用 Q4 台账科目代码（A1~A11 必要 / B1~B2 弹性 / C 经营混账 / I1~I4 收入 / T 转移）
+/// 多租户后每个用户一套，code 只在同一用户下唯一
 model Category {
   id        BigInt    @id @default(autoincrement())
-  code      String    @unique @db.VarChar(20)
+  userId    BigInt?
+  code      String    @db.VarChar(20)
   name      String    @db.VarChar(50)
   kind      String    @db.VarChar(20) // EXPENSE / INCOME / TRANSFER（转移：不计收支，如还信用卡、买理财、借出）
   groupName String?   @db.VarChar(30) // 必要 / 弹性 / 经营 / 收入 / 转移
@@ -63,14 +84,19 @@ model Category {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  user         User?          @relation(fields: [userId], references: [id])
   transactions Transaction[]
   budgets      Budget[]
   rules        CategoryRule[]
+
+  @@unique([userId, code])
+  @@index([userId])
 }
 
 /// 学习到的分类规则：你在 AI 录入/导入时改过的分类，会按对方名记住，下次自动套用
 model CategoryRule {
   id         BigInt   @id @default(autoincrement())
+  userId     BigInt?
   pattern    String   @db.VarChar(100)
   categoryId BigInt
   isBusiness Boolean  @default(false)
@@ -79,15 +105,18 @@ model CategoryRule {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  user     User? @relation(fields: [userId], references: [id])
   category Category @relation(fields: [categoryId], references: [id])
 
-  @@unique([pattern])
+  @@unique([userId, pattern])
+  @@index([userId])
 }
 
 /// 个人流水
 model Transaction {
   id            BigInt    @id @default(autoincrement())
-  code          String    @unique @db.VarChar(30)
+  userId        BigInt?
+  code          String    @db.VarChar(30)
   txnDate       DateTime  @db.Date
   txnTime       String?   @db.VarChar(8)
   direction     String    @db.VarChar(5) // IN / OUT
@@ -112,16 +141,19 @@ model Transaction {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  user     User?     @relation(fields: [userId], references: [id])
   account  Account?  @relation(fields: [accountId], references: [id])
   category Category? @relation(fields: [categoryId], references: [id])
 
-  @@index([txnDate])
-  @@index([externalId])
+  @@unique([userId, code])
+  @@unique([userId, externalId])
+  @@index([userId, txnDate])
 }
 
 /// 投资持仓：股票 / 基金 / 理财 / 定存 / 储蓄险 / 股权 / 其他
 model Holding {
   id          BigInt    @id @default(autoincrement())
+  userId      BigInt?
   type        String    @db.VarChar(20) // STOCK FUND WEALTH DEPOSIT INSURANCE EQUITY OTHER
   code        String?   @db.VarChar(30)
   name        String    @db.VarChar(80)
@@ -144,11 +176,15 @@ model Holding {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
+  user   User? @relation(fields: [userId], references: [id])
   trades HoldingTrade[]
+
+  @@index([userId])
 }
 
 model HoldingTrade {
   id            BigInt    @id @default(autoincrement())
+  userId        BigInt?
   holdingId     BigInt
   tradeDate     DateTime  @db.Date
   action        String    @db.VarChar(20) // BUY SELL DIVIDEND VALUATION
@@ -164,12 +200,16 @@ model HoldingTrade {
   createdAt     DateTime  @default(now())
   deletedAt     DateTime?
 
+  user    User? @relation(fields: [userId], references: [id])
   holding Holding @relation(fields: [holdingId], references: [id])
+
+  @@index([userId])
 }
 
 /// 固定资产：房产 / 车辆 / 大件
 model FixedAsset {
   id            BigInt    @id @default(autoincrement())
+  userId        BigInt?
   type          String    @db.VarChar(20) // PROPERTY VEHICLE OTHER
   name          String    @db.VarChar(80)
   owner         String    @default("ME") @db.VarChar(20)
@@ -186,11 +226,15 @@ model FixedAsset {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  user       User? @relation(fields: [userId], references: [id])
   valuations AssetValuation[]
+
+  @@index([userId])
 }
 
 model AssetValuation {
   id        BigInt   @id @default(autoincrement())
+  userId    BigInt?
   assetId   BigInt
   valDate   DateTime @db.Date
   value     Decimal  @db.Decimal(18, 2)
@@ -198,12 +242,16 @@ model AssetValuation {
   source    String   @default("MANUAL") @db.VarChar(20)
   createdAt DateTime @default(now())
 
+  user  User? @relation(fields: [userId], references: [id])
   asset FixedAsset @relation(fields: [assetId], references: [id])
+
+  @@index([userId])
 }
 
 /// 个人借贷：LEND 我借出（应收，资产）/ BORROW 我借入（负债：房贷、个人借款）
 model Loan {
   id              BigInt    @id @default(autoincrement())
+  userId          BigInt?
   direction       String    @db.VarChar(10) // LEND / BORROW
   kind            String    @default("PERSONAL") @db.VarChar(20) // PERSONAL COMPANY MORTGAGE CAR CONSUMER OTHER
   counterparty    String    @db.VarChar(80)
@@ -222,11 +270,15 @@ model Loan {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
+  user       User? @relation(fields: [userId], references: [id])
   repayments LoanRepayment[]
+
+  @@index([userId])
 }
 
 model LoanRepayment {
   id            BigInt    @id @default(autoincrement())
+  userId        BigInt?
   loanId        BigInt
   repayDate     DateTime  @db.Date
   principalPart Decimal   @default(0) @db.Decimal(18, 2)
@@ -237,12 +289,16 @@ model LoanRepayment {
   createdAt     DateTime  @default(now())
   deletedAt     DateTime?
 
+  user User? @relation(fields: [userId], references: [id])
   loan Loan @relation(fields: [loanId], references: [id])
+
+  @@index([userId])
 }
 
 /// 年度预算（按科目，月度额 × 12 或年度额）
 model Budget {
   id            BigInt   @id @default(autoincrement())
+  userId        BigInt?
   year          Int
   categoryId    BigInt
   monthlyAmount Decimal  @default(0) @db.Decimal(18, 2)
@@ -251,15 +307,18 @@ model Budget {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  user     User? @relation(fields: [userId], references: [id])
   category Category @relation(fields: [categoryId], references: [id])
 
-  @@unique([year, categoryId])
+  @@unique([userId, year, categoryId])
+  @@index([userId])
 }
 
 /// 月度净资产快照（月结时生成，结构化保存明细便于回看）
 model NetWorthSnapshot {
   id          BigInt   @id @default(autoincrement())
-  period      String   @unique @db.VarChar(7)
+  userId      BigInt?
+  period      String   @db.VarChar(7)
   cash        Decimal  @db.Decimal(18, 2)
   investments Decimal  @db.Decimal(18, 2)
   equity      Decimal  @db.Decimal(18, 2)
@@ -274,11 +333,17 @@ model NetWorthSnapshot {
   remark      String?  @db.VarChar(500)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@unique([userId, period])
+  @@index([userId])
 }
 
 /// AI 录入记录：原文、解析结果、最终入账情况，便于回看和改进
 model AiEntryLog {
   id        BigInt   @id @default(autoincrement())
+  userId    BigInt?
   input     String   @db.Text
   hasImage  Boolean  @default(false)
   provider  String?  @db.VarChar(30)
@@ -287,6 +352,10 @@ model AiEntryLog {
   error     String?  @db.VarChar(1000)
   ms        Int?
   createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model AuditLog {

@@ -7,6 +7,7 @@ import { classify, matchAccount, learnRule } from './classify.js'
 import { createTransaction, createTransfer, holdingTrade, assetValuation, loanRepay, calibrateBalance } from './ledger.js'
 import { round2 } from './money.js'
 import { toDate } from './period.js'
+import { resolveUid } from './tenant.js'
 
 export const ITEM_TYPES = {
   transaction: '收支',
@@ -22,12 +23,13 @@ export const ITEM_TYPES = {
 
 // ─────────── 上下文：告诉模型你有哪些账户、科目、持仓 ───────────
 async function buildContext() {
+  const userId = resolveUid()
   const [accounts, categories, holdings, assets, loans] = await Promise.all([
-    prisma.account.findMany({ where: { deletedAt: null, status: 'ACTIVE' }, orderBy: { sort: 'asc' } }),
-    prisma.category.findMany({ where: { deletedAt: null }, orderBy: { sort: 'asc' } }),
-    prisma.holding.findMany({ where: { deletedAt: null, status: 'HOLDING' } }),
-    prisma.fixedAsset.findMany({ where: { deletedAt: null } }),
-    prisma.loan.findMany({ where: { deletedAt: null, status: { not: 'SETTLED' } } })
+    prisma.account.findMany({ where: { userId, deletedAt: null, status: 'ACTIVE' }, orderBy: { sort: 'asc' } }),
+    prisma.category.findMany({ where: { userId, deletedAt: null }, orderBy: { sort: 'asc' } }),
+    prisma.holding.findMany({ where: { userId, deletedAt: null, status: 'HOLDING' } }),
+    prisma.fixedAsset.findMany({ where: { userId, deletedAt: null } }),
+    prisma.loan.findMany({ where: { userId, deletedAt: null, status: { not: 'SETTLED' } } })
   ])
   return { accounts, categories, holdings, assets, loans }
 }
@@ -225,7 +227,7 @@ export async function parseEntry({ text = '', images = [] }) {
   }
   const resolved = await resolveItems(items, ctx)
   const log = await prisma.aiEntryLog.create({
-    data: { input: text.slice(0, 60000), hasImage: images.length > 0, provider, output: resolved, error, ms: Date.now() - t0 }
+    data: { userId: resolveUid(), input: text.slice(0, 60000), hasImage: images.length > 0, provider, output: resolved, error, ms: Date.now() - t0 }
   })
   return { logId: String(log.id), provider, error, ms: Date.now() - t0, items: resolved }
 }
@@ -281,6 +283,7 @@ async function commitOne(it) {
     case 'new_loan': {
       const l = await prisma.loan.create({
         data: {
+          userId: resolveUid(),
           direction: it.direction === 'BORROW' ? 'BORROW' : 'LEND', kind: it.kind || 'PERSONAL', counterparty: it.counterparty || '未命名',
           principal: it.amount, balance: it.amount, startDate: toDate(it.date), remark: it.description || null
         }
@@ -288,11 +291,12 @@ async function commitOne(it) {
       return `借贷 #${l.id}`
     }
     case 'new_holding': {
+      const userId = resolveUid()
       const h = await prisma.holding.create({
-        data: { type: it.holdingType || 'OTHER', name: it.holding, code: it.code || null, platform: it.platform || null, status: 'HOLDING' }
+        data: { userId, type: it.holdingType || 'OTHER', name: it.holding, code: it.code || null, platform: it.platform || null, status: 'HOLDING' }
       })
       if (it.amount || (it.quantity && it.price)) {
-        await holdingTrade({ holdingId: h.id, tradeDate: it.date, action: 'BUY', quantity: it.quantity, price: it.price, amount: it.amount, cashAccountId: it.accountId }, src)
+        await holdingTrade({ userId, holdingId: h.id, tradeDate: it.date, action: 'BUY', quantity: it.quantity, price: it.price, amount: it.amount, cashAccountId: it.accountId }, src)
       }
       return `持仓 ${h.name}`
     }

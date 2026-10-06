@@ -5,23 +5,25 @@ import prisma from '../lib/prisma.js'
 import { ok, wrap } from '../lib/response.js'
 import { balanceSheet, periodStats } from '../lib/networth.js'
 import { fmtMoney as m } from '../lib/money.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 
 router.get('/snapshots', wrap(async (req, res) => {
-  const list = await prisma.netWorthSnapshot.findMany({ orderBy: { period: 'desc' } })
+  const list = await prisma.netWorthSnapshot.findMany({ where: { userId: currentUserId() }, orderBy: { period: 'desc' } })
   return ok(res, { list, total: list.length })
 }))
 
 async function checklist(period) {
   const start = new Date(`${period}-01T00:00:00Z`)
   const end = new Date(`${dayjs(start).endOf('month').format('YYYY-MM-DD')}T23:59:59Z`)
+  const userId = currentUserId()
   const [accounts, uncategorized, pendingBiz, txnCount, holdings] = await Promise.all([
-    prisma.account.findMany({ where: { deletedAt: null, status: 'ACTIVE' } }),
-    prisma.transaction.count({ where: { deletedAt: null, categoryId: null, txnDate: { gte: start, lte: end } } }),
-    prisma.transaction.count({ where: { deletedAt: null, isBusiness: true, bizStatus: 'PENDING', txnDate: { gte: start, lte: end } } }),
-    prisma.transaction.count({ where: { deletedAt: null, txnDate: { gte: start, lte: end } } }),
-    prisma.holding.findMany({ where: { deletedAt: null, status: 'HOLDING' } })
+    prisma.account.findMany({ where: { userId, deletedAt: null, status: 'ACTIVE' } }),
+    prisma.transaction.count({ where: { userId, deletedAt: null, categoryId: null, txnDate: { gte: start, lte: end } } }),
+    prisma.transaction.count({ where: { userId, deletedAt: null, isBusiness: true, bizStatus: 'PENDING', txnDate: { gte: start, lte: end } } }),
+    prisma.transaction.count({ where: { userId, deletedAt: null, txnDate: { gte: start, lte: end } } }),
+    prisma.holding.findMany({ where: { userId, deletedAt: null, status: 'HOLDING' } })
   ])
   const monthStart = dayjs(start).startOf('month')
   const staleAcc = accounts.filter((a) => !a.initialDate || dayjs(a.initialDate).isBefore(monthStart.add(20, 'day')))
@@ -45,7 +47,10 @@ router.post('/snapshot', wrap(async (req, res) => {
     fixedAssets: sheet.fixedAssets, totalAssets: sheet.totalAssets, liabilities: sheet.liabilities, netWorth: sheet.netWorth,
     income: stats.income, expense: stats.expense, detail: { sheet, stats }, remark: req.body.remark || null
   }
-  const row = await prisma.netWorthSnapshot.upsert({ where: { period }, update: data, create: { period, ...data } })
+  const userId = currentUserId()
+  const row = await prisma.netWorthSnapshot.upsert({
+    where: { userId_period: { userId, period } }, update: data, create: { userId, period, ...data }
+  })
   return ok(res, row)
 }))
 
@@ -53,7 +58,7 @@ router.get('/summary', wrap(async (req, res) => {
   const period = req.query.period || dayjs().format('YYYY-MM')
   const [sheet, s, prev, checks] = await Promise.all([
     balanceSheet(), periodStats(period),
-    prisma.netWorthSnapshot.findFirst({ where: { period: { lt: period } }, orderBy: { period: 'desc' } }),
+    prisma.netWorthSnapshot.findFirst({ where: { userId: currentUserId(), period: { lt: period } }, orderBy: { period: 'desc' } }),
     checklist(period)
   ])
   const delta = prev ? sheet.netWorth - Number(prev.netWorth) : null

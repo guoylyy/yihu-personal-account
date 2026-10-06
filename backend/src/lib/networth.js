@@ -1,4 +1,4 @@
-// 个人资产负债表 + 月度收支统计
+// 个人资产负债表 + 月度收支统计（多租户：全部限定当前用户）
 // 口径：
 //   现金类 = 非信用卡账户余额之和；信用卡欠款（余额为负）计入负债
 //   金融投资 = 股票/基金/理财/定存/储蓄险 市值；股权单列
@@ -9,15 +9,17 @@ import prisma from './prisma.js'
 import { round2 } from './money.js'
 import { periodRange } from './period.js'
 import { holdingMarketValue } from './ledger.js'
+import { resolveUid } from './tenant.js'
 
 const n = Number
 
-export async function balanceSheet() {
+export async function balanceSheet(uid) {
+  const userId = resolveUid(uid)
   const [accounts, holdings, assets, loans] = await Promise.all([
-    prisma.account.findMany({ where: { deletedAt: null, status: 'ACTIVE' }, orderBy: [{ sort: 'asc' }, { id: 'asc' }] }),
-    prisma.holding.findMany({ where: { deletedAt: null, status: 'HOLDING' } }),
-    prisma.fixedAsset.findMany({ where: { deletedAt: null, status: 'HOLDING' } }),
-    prisma.loan.findMany({ where: { deletedAt: null, status: { not: 'SETTLED' } } })
+    prisma.account.findMany({ where: { userId, deletedAt: null, status: 'ACTIVE' }, orderBy: [{ sort: 'asc' }, { id: 'asc' }] }),
+    prisma.holding.findMany({ where: { userId, deletedAt: null, status: 'HOLDING' } }),
+    prisma.fixedAsset.findMany({ where: { userId, deletedAt: null, status: 'HOLDING' } }),
+    prisma.loan.findMany({ where: { userId, deletedAt: null, status: { not: 'SETTLED' } } })
   ])
 
   let cash = 0
@@ -63,14 +65,15 @@ export async function balanceSheet() {
 }
 
 /** 某月个人收支：收入、个人支出、公司款、转移，以及按科目明细 */
-export async function periodStats(period) {
+export async function periodStats(period, uid) {
+  const userId = resolveUid(uid)
   const { start, end } = periodRange(period)
   const rows = await prisma.transaction.groupBy({
     by: ['categoryId', 'direction', 'isBusiness'],
-    where: { deletedAt: null, txnDate: { gte: start, lte: end } },
+    where: { userId, deletedAt: null, txnDate: { gte: start, lte: end } },
     _sum: { amount: true }, _count: true
   })
-  const cats = await prisma.category.findMany()
+  const cats = await prisma.category.findMany({ where: { userId } })
   const catMap = new Map(cats.map((c) => [String(c.id), c]))
   let income = 0, expense = 0, business = 0, transfer = 0, uncategorized = 0
   const byCategory = {}

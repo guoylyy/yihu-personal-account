@@ -4,11 +4,13 @@ import prisma from './prisma.js'
 import { ok, badRequest, notFound, wrap } from './response.js'
 import { logAudit } from './audit.js'
 import { toDate } from './period.js'
+import { currentUserId } from './tenant.js'
 
 export function crudRouter(cfg) {
   const {
     model, entity = model, fields = [], dateFields = [], searchFields = [], filters = {},
-    include, orderBy = { createdAt: 'desc' }, dateRangeField, required = [], hooks = {}, softDelete = true
+    include, orderBy = { createdAt: 'desc' }, dateRangeField, required = [], hooks = {}, softDelete = true,
+    tenant = true
   } = cfg
   const router = express.Router()
   const db = () => prisma[model]
@@ -34,6 +36,7 @@ export function crudRouter(cfg) {
     const take = Math.min(Number(page_size) || 50, 1000)
     const skip = (Number(page) - 1) * take
     const where = softDelete ? { deletedAt: null } : {}
+    if (tenant) where.userId = currentUserId()
     for (const [q, field] of Object.entries(filters)) {
       const v = req.query[q]
       if (v !== undefined && v !== '') where[field] = isBigint(field) ? BigInt(v) : v === 'true' ? true : v === 'false' ? false : v
@@ -52,7 +55,10 @@ export function crudRouter(cfg) {
   }))
 
   router.get('/:id', wrap(async (req, res) => {
-    const row = await db().findFirst({ where: { id: BigInt(req.params.id), ...(softDelete ? { deletedAt: null } : {}) }, include })
+    const row = await db().findFirst({
+      where: { id: BigInt(req.params.id), ...(tenant ? { userId: currentUserId() } : {}), ...(softDelete ? { deletedAt: null } : {}) },
+      include
+    })
     return row ? ok(res, row) : notFound(res)
   }))
 
@@ -60,6 +66,7 @@ export function crudRouter(cfg) {
     const missing = required.filter((k) => req.body[k] === undefined || req.body[k] === '' || req.body[k] === null)
     if (missing.length) return badRequest(res, `缺少必填字段：${missing.join('、')}`)
     let data = pickData(req.body)
+    if (tenant) data.userId = currentUserId()
     if (hooks.beforeCreate) {
       const r = await hooks.beforeCreate(data, req)
       if (r?.error) return badRequest(res, r.error)
@@ -73,7 +80,7 @@ export function crudRouter(cfg) {
 
   router.put('/:id', wrap(async (req, res) => {
     const id = BigInt(req.params.id)
-    const before = await db().findFirst({ where: { id } })
+    const before = await db().findFirst({ where: { id, ...(tenant ? { userId: currentUserId() } : {}) } })
     if (!before) return notFound(res)
     let data = pickData(req.body)
     if (hooks.beforeUpdate) {
@@ -89,7 +96,7 @@ export function crudRouter(cfg) {
 
   router.delete('/:id', wrap(async (req, res) => {
     const id = BigInt(req.params.id)
-    const before = await db().findFirst({ where: { id } })
+    const before = await db().findFirst({ where: { id, ...(tenant ? { userId: currentUserId() } : {}) } })
     if (!before) return notFound(res)
     const row = softDelete
       ? await db().update({ where: { id }, data: { deletedAt: new Date() } })

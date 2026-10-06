@@ -5,6 +5,7 @@ import { ok, badRequest, wrap } from '../lib/response.js'
 import { recalcAccountBalance } from '../lib/balance.js'
 import { calibrateBalance, createTransfer } from '../lib/ledger.js'
 import { invalidateClassifier } from '../lib/classify.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 
@@ -21,7 +22,7 @@ router.post('/transfer', wrap(async (req, res) => {
 }))
 
 router.post('/recalc', wrap(async (req, res) => {
-  const list = await prisma.account.findMany({ where: { deletedAt: null } })
+  const list = await prisma.account.findMany({ where: { userId: currentUserId(), deletedAt: null } })
   for (const a of list) await recalcAccountBalance(a.id)
   return ok(res, true)
 }))

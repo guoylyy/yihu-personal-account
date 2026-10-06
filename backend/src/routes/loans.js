@@ -3,11 +3,12 @@ import prisma from '../lib/prisma.js'
 import { crudRouter } from '../lib/crud.js'
 import { ok, wrap } from '../lib/response.js'
 import { loanRepay } from '../lib/ledger.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 
 router.get('/:id/repayments', wrap(async (req, res) => {
-  const list = await prisma.loanRepayment.findMany({ where: { loanId: BigInt(req.params.id), deletedAt: null }, orderBy: { repayDate: 'desc' } })
+  const list = await prisma.loanRepayment.findMany({ where: { userId: currentUserId(), loanId: BigInt(req.params.id), deletedAt: null }, orderBy: { repayDate: 'desc' } })
   return ok(res, { list, total: list.length })
 }))
 

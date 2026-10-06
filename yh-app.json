@@ -11,7 +11,7 @@
   "mcp": "/mcp",
   "database": true,
   "memory": "384m",
-  "visibility": { "roles": ["ADMIN"] },
+  "visibility": {},
   "isDefault": false,
   "env": {},
   "deploy": {

@@ -5,12 +5,13 @@ import { ok, badRequest, wrap } from '../lib/response.js'
 import { round2 } from '../lib/money.js'
 import { periodStats } from '../lib/networth.js'
 import dayjs from 'dayjs'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 
 router.get('/', wrap(async (req, res) => {
   const year = Number(req.query.year || dayjs().year())
-  const list = await prisma.budget.findMany({ where: { year }, include: { category: true }, orderBy: { category: { sort: 'asc' } } })
+  const list = await prisma.budget.findMany({ where: { year, userId: currentUserId() }, include: { category: true }, orderBy: { category: { sort: 'asc' } } })
   return ok(res, { year, list })
 }))
 
@@ -20,12 +21,14 @@ router.put('/:year', wrap(async (req, res) => {
   const items = req.body.items || []
   if (!year) return badRequest(res, '年份不对')
   for (const it of items) {
+    const userId = currentUserId()
+    const categoryId = BigInt(it.categoryId)
     const monthly = round2(it.monthlyAmount || 0)
     const annual = round2(it.annualAmount || monthly * 12)
     await prisma.budget.upsert({
-      where: { year_categoryId: { year, categoryId: BigInt(it.categoryId) } },
+      where: { userId_year_categoryId: { userId, year, categoryId } },
       update: { monthlyAmount: annual / 12, annualAmount: annual, remark: it.remark || null },
-      create: { year, categoryId: BigInt(it.categoryId), monthlyAmount: annual / 12, annualAmount: annual, remark: it.remark || null }
+      create: { userId, year, categoryId, monthlyAmount: annual / 12, annualAmount: annual, remark: it.remark || null }
     })
   }
   return ok(res, true)
@@ -36,7 +39,7 @@ router.get('/execution', wrap(async (req, res) => {
   const period = req.query.period || dayjs().format('YYYY-MM')
   const year = Number(period.slice(0, 4))
   const monthIdx = Number(period.slice(5, 7))
-  const budgets = await prisma.budget.findMany({ where: { year }, include: { category: true } })
+  const budgets = await prisma.budget.findMany({ where: { year, userId: currentUserId() }, include: { category: true } })
   const months = Array.from({ length: monthIdx }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
   const stats = await Promise.all(months.map((p) => periodStats(p)))
   const month = stats[stats.length - 1]

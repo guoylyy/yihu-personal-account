@@ -4,12 +4,13 @@ import { crudRouter } from '../lib/crud.js'
 import { ok, badRequest, wrap } from '../lib/response.js'
 import { holdingTrade, holdingMarketValue } from '../lib/ledger.js'
 import { round2 } from '../lib/money.js'
+import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 
 // 持仓列表附带计算字段：市值、浮盈、收益率
 router.get('/overview', wrap(async (req, res) => {
-  const where = { deletedAt: null }
+  const where = { userId: currentUserId(), deletedAt: null }
   if (req.query.status) where.status = req.query.status
   const list = await prisma.holding.findMany({ where, orderBy: [{ type: 'asc' }, { id: 'asc' }] })
   const rows = list.map((h) => {
@@ -27,7 +28,7 @@ router.get('/overview', wrap(async (req, res) => {
 }))
 
 router.get('/:id/trades', wrap(async (req, res) => {
-  const list = await prisma.holdingTrade.findMany({ where: { holdingId: BigInt(req.params.id), deletedAt: null }, orderBy: [{ tradeDate: 'desc' }, { id: 'desc' }] })
+  const list = await prisma.holdingTrade.findMany({ where: { userId: currentUserId(), holdingId: BigInt(req.params.id), deletedAt: null }, orderBy: [{ tradeDate: 'desc' }, { id: 'desc' }] })
   return ok(res, { list, total: list.length })
 }))
 

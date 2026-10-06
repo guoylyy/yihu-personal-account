@@ -16,6 +16,7 @@ import dashboardRouter from './routes/dashboard.js'
 import closeRouter from './routes/close.js'
 import aiRouter from './routes/ai.js'
 import { auth } from './lib/auth.js'
+import { withTenant } from './lib/tenant.js'
 import { mountPlatform, serveFrontend, callSelf } from './lib/platform.js'
 import { resolveUser, signFor } from './lib/platform-users.js'
 
@@ -30,7 +31,9 @@ app.use(express.json({ limit: '20mb' }))
 app.get('/api/health', (req, res) => res.json({ code: 0, message: 'ok', data: { ts: Date.now() } }))
 app.use('/api/auth', authRouter)
 
-app.use('/api/pf', auth)
+// 鉴权通过后进入该用户的租户上下文，下游所有读写隐式归属 req.user.id
+const enterTenant = (req, res, next) => withTenant(req.user.id, next)
+app.use('/api/pf', auth, enterTenant)
 app.use('/api/pf/accounts', accountsRouter)
 app.use('/api/pf/categories', categoriesRouter)
 app.use('/api/pf/transactions', transactionsRouter)

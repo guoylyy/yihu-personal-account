@@ -1,33 +1,37 @@
 // 规则分类：学到的规则（你改过的）> 科目关键字。都命中不了再交给 AI
+// 多租户：规则/关键字缓存与查询都按当前用户隔离
 import prisma from './prisma.js'
+import { resolveUid } from './tenant.js'
 
-let cache = null
-let cacheAt = 0
+const caches = new Map() // userId -> { at, rules, keywords, categories }
 
-export function invalidateClassifier() { cache = null }
+export function invalidateClassifier() { caches.clear() }
 
-async function load() {
-  if (cache && Date.now() - cacheAt < 60_000) return cache
+async function load(uid) {
+  const key = String(uid)
+  const hit = caches.get(key)
+  if (hit && Date.now() - hit.at < 60_000) return hit
   const [rules, categories] = await Promise.all([
-    prisma.categoryRule.findMany({ include: { category: true } }),
-    prisma.category.findMany({ where: { deletedAt: null } })
+    prisma.categoryRule.findMany({ where: { userId: uid }, include: { category: true } }),
+    prisma.category.findMany({ where: { userId: uid, deletedAt: null } })
   ])
-  cache = {
+  const cache = {
     rules: rules.sort((a, b) => b.pattern.length - a.pattern.length),
     keywords: categories.flatMap((c) =>
       (c.keywords || '').split(/[,，]/).map((k) => k.trim()).filter(Boolean).map((k) => ({ k, c }))
     ).sort((a, b) => b.k.length - a.k.length),
     categories
   }
-  cacheAt = Date.now()
+  caches.set(key, { at: Date.now(), ...cache })
   return cache
 }
 
 /**
  * @returns {{ categoryId, categoryCode, isBusiness, by: 'rule'|'keyword'|null, pattern? }}
  */
-export async function classify({ counterparty = '', description = '', direction = 'OUT' }) {
-  const { rules, keywords } = await load()
+export async function classify({ counterparty = '', description = '', direction = 'OUT' }, uid) {
+  const userId = resolveUid(uid)
+  const { rules, keywords } = await load(userId)
   const cp = String(counterparty || '')
   const text = `${cp} ${description || ''}`
   const rule = rules.find((r) => cp && (cp === r.pattern || cp.includes(r.pattern))) ||
@@ -42,27 +46,28 @@ export async function classify({ counterparty = '', description = '', direction 
 }
 
 /** 记住一条分类规则（用户纠正/确认时调用） */
-export async function learnRule(pattern, categoryId, isBusiness = false) {
+export async function learnRule(pattern, categoryId, isBusiness = false, uid) {
   const p = String(pattern || '').trim().slice(0, 100)
   if (p.length < 2 || !categoryId) return
+  const userId = resolveUid(uid)
   await prisma.categoryRule.upsert({
-    where: { pattern: p },
+    where: { userId_pattern: { userId, pattern: p } },
     update: { categoryId: BigInt(categoryId), isBusiness: !!isBusiness, hits: { increment: 1 } },
-    create: { pattern: p, categoryId: BigInt(categoryId), isBusiness: !!isBusiness }
+    create: { userId, pattern: p, categoryId: BigInt(categoryId), isBusiness: !!isBusiness }
   })
   invalidateClassifier()
 }
 
-export async function categoryByCode(code) {
-  const { categories } = await load()
+export async function categoryByCode(code, uid) {
+  const { categories } = await load(resolveUid(uid))
   return categories.find((c) => c.code === code) || null
 }
 
 /** 按账户名 / 别名 / 尾号找账户 */
-export async function matchAccount(text) {
+export async function matchAccount(text, uid) {
   if (!text) return null
   const s = String(text)
-  const accounts = await prisma.account.findMany({ where: { deletedAt: null, status: 'ACTIVE' } })
+  const accounts = await prisma.account.findMany({ where: { userId: resolveUid(uid), deletedAt: null, status: 'ACTIVE' } })
   let best = null
   let bestLen = 0
   for (const a of accounts) {
