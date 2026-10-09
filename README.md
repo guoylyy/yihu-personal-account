@@ -1,7 +1,8 @@
 # 个人财务系统（personal-finance）
 
-> 以明的私人账本系统，与集团财务（yihu-finance）完全分开。架构和风格沿用集团系统：Vue 3 + Element Plus ｜ Node + Express + Prisma ｜ MySQL
+> 个人账本系统，与集团财务（yihu-finance）完全分开。架构和风格沿用集团系统：Vue 3 + Element Plus ｜ Node + Express + Prisma ｜ MySQL
 > 回答三个问题：**我有多少（净资产）？钱去哪了（收支）？按计划走没有（预算）？**
+> 多租户：接到以虎 One 上时，每个平台用户一本独立账本、互相隔离（本地单机跑仍是单用户）
 
 ## 一、启动
 
@@ -79,11 +80,24 @@ mysqldump -uroot -proot --single-transaction --routines personal_finance | gzip 
 ./yh restore personal-finance /tmp/personal_finance.sql.gz && ./yh restart personal-finance
 ```
 
+**从旧版（单主人）数据升级到多租户**：旧库没有 `userId` 列，而新版 schema 给各表加了带 `userId` 的唯一约束——应用启动时的 `db push`（不带 `--accept-data-loss`）会拒绝这种改动，导致发布失败回滚。要先手动放行一次并回填历史数据，再上线（2026-10-06 实际踩过，平台服务器上执行）：
+
+```bash
+git -C apps/personal-finance/src fetch origin release && git -C apps/personal-finance/src checkout -f --detach FETCH_HEAD
+docker compose -f apps/personal-finance/compose.yml build
+docker run --rm --network yh-app-personal-finance --env-file apps/personal-finance/.env \
+  yh-app-personal-finance:latest \
+  sh -c "npx prisma db push --accept-data-loss --skip-generate && node prisma/migrate-tenant.js"
+./yh up personal-finance
+```
+
+`migrate-tenant.js` 幂等：把所有 `userId` 为空的历史数据归属到账本主人。以后 schema 再新增唯一约束，同样要在上线前手动 `db push --accept-data-loss` 一次。
+
 | 接入点 | 说明 |
 | --- | --- |
 | 清单 | `yh-app.json`（端口 3020、健康检查 `/api/health`、需要数据库、MCP `/mcp`） |
 | 镜像 | `Dockerfile`：构建前端，后端托管页面；启动时 `prisma db push`（会丢数据的改动直接失败，平台回滚），`seed.js` 可重复执行，只补科目（`backend/data/` 不进镜像） |
-| 统一登录 | `backend/src/lib/platform.js` + `platform-users.js`：私人账本只认一个人：第一次由平台管理员从工作台进入时绑定到本系统的账号，之后其他人一律拒绝；清单里可见范围也只给管理员 |
+| 统一登录 | `backend/src/lib/platform.js` + `platform-users.js` + `tenant.js`：多租户。平台用户首次进入自动开户（`platform_<id>`，只走 SSO，无本地密码）并初始化一套标准科目，数据按 `userId` 隔离；兼容旧单主人数据：还没人绑定时第一个进来的平台用户接管最早的账号及其历史数据。清单可见范围已放开（全部登录用户可见） |
 | 本地密码登录 | 在平台上默认关闭（种子里的默认密码不能暴露在公网上），确需时 `apps/personal-finance/.env` 里设 `ALLOW_LOCAL_LOGIN=true` |
 | 页面路径 | 后端给 `index.html` 注入 `<base href="/apps/personal-finance/">`，前端接口、路由都从 `frontend/src/api/base.js` 的 `BASE` 拼 |
 | AI 工具（只读） | `get_financial_overview` 财务总览、`get_budget_execution` 预算执行、`get_month_summary` 月结摘要 |
@@ -96,14 +110,19 @@ mysqldump -uroot -proot --single-transaction --routines personal_finance | gzip 
 2. 写流水只走 `lib/ledger.js`，写完重算余额（`recalcAccountBalance`）。
 3. 删除一律软删。
 4. 个人数据（`backend/data/`）不进 git：`personal-seed.json`、原始账单 CSV。
+5. 多租户：业务读写一律带租户过滤（`lib/tenant.js` 的 `tenantWhere()` / `resolveUid()`），写数据必须带 `userId`，新增表先加 `userId` 列——漏过滤就是串账。
+6. schema 新增唯一约束会被平台启动的 `db push` 拦截（安全默认），上线前手动放行一次，见「部署到以虎 One → 从旧版升级」。
 
 ## 六、目录
 
 ```
 backend/
   prisma/schema.prisma      账户/科目/规则/流水/持仓/交易/固定资产/估值/借贷/还款/预算/净资产快照/AI 记录
+  prisma/categories.js      标准科目代码（seed 与平台开户共用）
   prisma/seed.js            科目（代码内）+ 个人数据（data/personal-seed.json）
+  prisma/migrate-tenant.js  一次性迁移：历史数据回填 userId（单主人 → 多租户）
   scripts/import-2026-bills.js
+  src/lib/tenant.js         请求级租户上下文（AsyncLocalStorage），查询统一带 userId
   src/lib/ledger.js         记账动作（流水、互转、持仓交易、估值、还款、校准）
   src/lib/networth.js       资产负债表、月度收支统计
   src/lib/aiEntry.js        AI 录入：上下文 → 解析 → 对 id → 入账；规则兜底

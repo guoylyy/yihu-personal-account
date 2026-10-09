@@ -6,7 +6,8 @@
 ## 动手前
 - 读 README「三、口径」和「五、硬约定」。
 - 写流水只走 `backend/src/lib/ledger.js`；新增会产生现金变动的动作，也在 ledger 里加，并补到 `aiEntry.js` 的 `commitOne` 和提示词字段说明里。
-- 新增科目代码时同步 `prisma/seed.js` 的 `CATEGORIES`；统计口径改动集中在 `lib/networth.js`。
+- 多租户：业务读写一律带租户过滤（`backend/src/lib/tenant.js` 的 `tenantWhere()` / `resolveUid()`），写数据一律带 `userId`，新增表先加 `userId` 列——漏过滤就是串账
+- 新增科目代码时同步 `prisma/categories.js` 的 `CATEGORIES`；统计口径改动集中在 `lib/networth.js`。
 - 个人数据只放 `backend/data/`（已 gitignore），不要写进代码或提示词。
 - 改 schema：`cd backend && npx prisma db push && npx prisma generate`。
 
