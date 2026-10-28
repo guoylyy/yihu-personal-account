@@ -102,6 +102,8 @@ cd ../frontend && npm install && npm run dev   # http://localhost:5193
 
 本系统可以作为应用插到 [以虎 One](https://github.com/guoylyy/yihu-one) 平台（自托管的小团队工作台，统一登录 + 应用市场 + AI 助手）上：用平台的统一登录，挂在 `<平台地址>/apps/personal-account/` 下，AI 助手可以直接查询净资产、预算和月结。本地开发不受影响——不配平台注入的 `YH_*` 环境变量时，一切照旧（账号密码登录、根路径访问）。
 
+**版本**：当前 `1.0.0`（`VERSION` 文件与 `yh-app.json` 的 `version` 字段保持一致，遵循语义化版本；每次发版同步更新，平台据此展示与升级比对）。
+
 **安装**：平台控制台「管理 → 应用 → 从 Git 安装应用」填本仓库地址 `https://github.com/guoylyy/yihu-personal-account` 和 code `personal-account`；或在平台服务器上：
 
 ```bash
