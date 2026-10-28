@@ -1,10 +1,10 @@
 # 给 Claude 的项目须知
 
-个人财务系统（以明私人账本），与集团财务 `~/Develop/gitee/yihu-finance` 分开，但架构/风格/约定沿用它。
+个人财务系统（私人账本），与集团财务 `~/Develop/gitee/yihu-finance` 分开，但架构/风格/约定沿用它。
 对应的 Obsidian 账本：`~/Downloads/百度云同步空间/02.Creation/Write Space/01.Finance/06.家庭个人/`。
 
 ## 动手前
-- 读 README「三、口径」和「五、硬约定」。
+- 读 README「口径」和「硬约定」。
 - 写流水只走 `backend/src/lib/ledger.js`；新增会产生现金变动的动作，也在 ledger 里加，并补到 `aiEntry.js` 的 `commitOne` 和提示词字段说明里。
 - 多租户：业务读写一律带租户过滤（`backend/src/lib/tenant.js` 的 `tenantWhere()` / `resolveUid()`），写数据一律带 `userId`，新增表先加 `userId` 列——漏过滤就是串账
 - 新增科目代码时同步 `prisma/categories.js` 的 `CATEGORIES`；统计口径改动集中在 `lib/networth.js`。

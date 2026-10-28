@@ -1,7 +1,8 @@
 node_modules/
 dist/
 .env
-backend/data/
+backend/data/*
+!backend/data/personal-seed.example.json
 backend/uploads/
 .DS_Store
 .claude/

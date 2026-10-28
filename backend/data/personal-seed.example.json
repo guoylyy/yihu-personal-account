@@ -1,0 +1,58 @@
+{
+  "_说明": "虚构演示数据：里面的公司、人名、银行、账号与金额全部为虚构，仅用于本地体验与结构参考。使用：cp backend/data/personal-seed.example.json backend/data/personal-seed.json，再在 backend 下 npm run seed。你自己的真实数据请写在 personal-seed.json（已 gitignore），不要提交。",
+  "user": { "username": "admin", "password": "admin123", "name": "林小明" },
+  "accounts": [
+    { "name": "示例银行储蓄卡", "type": "BANK", "institution": "示例银行", "lastNo": "1234", "initialBalance": 58600, "initialDate": "2026-01-05", "aliases": "示例银行储蓄卡(1234),示例银行", "sort": 1, "remark": "工资卡" },
+    { "name": "示例城商行储蓄卡", "type": "BANK", "institution": "示例城商行", "lastNo": "5678", "initialBalance": 12000, "initialDate": "2026-01-05", "aliases": "示例城商行(5678)", "sort": 2 },
+    { "name": "微信钱包", "type": "WECHAT", "initialBalance": 2350.5, "initialDate": "2026-01-05", "sort": 3 },
+    { "name": "支付宝", "type": "ALIPAY", "initialBalance": 4800, "initialDate": "2026-01-05", "sort": 4 },
+    { "name": "示例信用卡", "type": "CREDIT", "institution": "示例银行", "lastNo": "9012", "initialBalance": -3650, "initialDate": "2026-01-05", "aliases": "示例信用卡(9012)", "sort": 5, "remark": "日常刷卡" }
+  ],
+  "holdings": [
+    { "type": "FUND", "name": "示例指数基金组合", "platform": "示例基金平台", "marketValue": 32500, "costAmount": 28400, "valuedAt": "2026-01-05", "remark": "每月定投" },
+    { "type": "WEALTH", "name": "示例银行稳健理财", "platform": "示例银行", "marketValue": 50000, "costAmount": 50000, "valuedAt": "2026-01-05", "remark": "90 天滚动" },
+    { "type": "INSURANCE", "name": "示例增额储蓄险", "platform": "示例人寿", "marketValue": 16800, "costAmount": 15000, "valuedAt": "2026-01-05", "remark": "第 3 年保单" },
+    { "type": "EQUITY", "name": "示例咖啡馆（合伙份额）", "platform": "线下", "marketValue": 60000, "costAmount": 60000, "ratio": 10, "valuationNote": "按最近一次分红口径估算", "valuedAt": "2026-01-05" }
+  ],
+  "assets": [
+    { "type": "PROPERTY", "name": "示例小户型", "currentValue": 89000, "valuedAt": "2026-01-05", "remark": "虚构演示房产" },
+    { "type": "VEHICLE", "name": "示例代步车", "currentValue": 45000, "valuedAt": "2026-01-05" },
+    { "type": "OTHER", "name": "示例相机套装", "currentValue": 8600, "valuedAt": "2026-01-05" }
+  ],
+  "loans": [
+    { "direction": "LEND", "kind": "PERSONAL", "counterparty": "李新民", "principal": 20000, "startDate": "2025-06-01", "remark": "朋友周转，虚构演示" },
+    { "direction": "LEND", "kind": "COMPANY", "counterparty": "示例贸易", "principal": 35000, "startDate": "2025-09-01", "remark": "替公司垫付货款，待收回" },
+    { "direction": "BORROW", "kind": "MORTGAGE", "counterparty": "示例银行", "principal": 60000, "startDate": "2024-03-01", "contractNo": "DEMO-2024-0001", "includeInNetWorth": true, "asset": "示例小户型", "remark": "虚构房贷余额" }
+  ],
+  "rules": [
+    { "pattern": "周小雨", "code": "T4" },
+    { "pattern": "示例科技", "code": "C", "isBusiness": true },
+    { "pattern": "示例云", "code": "C", "isBusiness": true },
+    { "pattern": "示例贸易", "code": "C", "isBusiness": true },
+    { "pattern": "示例课堂", "code": "B2", "isBusiness": true },
+    { "pattern": "示例算力", "code": "A10", "isBusiness": true },
+    { "pattern": "示例物业", "code": "A6" },
+    { "pattern": "示例出行", "code": "A7" },
+    { "pattern": "示例电力", "code": "A4" },
+    { "pattern": "示例加油站", "code": "A7" }
+  ],
+  "budgets": {
+    "_来源": "虚构演示预算（本人承担口径：家庭开销 × 2/3 已折算进预算数）",
+    "years": [2026, 2027],
+    "items": [
+      { "code": "A1", "monthly": 3000, "remark": "小孩抚养" },
+      { "code": "A2", "monthly": 2500 },
+      { "code": "A3", "annual": 12000 },
+      { "code": "A4", "annual": 9600 },
+      { "code": "A5", "monthly": 1600 },
+      { "code": "A6", "monthly": 900 },
+      { "code": "A7", "monthly": 2200 },
+      { "code": "A8", "annual": 15000 },
+      { "code": "A9", "monthly": 4800 },
+      { "code": "A10", "monthly": 800 },
+      { "code": "A11", "monthly": 600 },
+      { "code": "B1", "annual": 36000 },
+      { "code": "B2", "monthly": 500 }
+    ]
+  }
+}

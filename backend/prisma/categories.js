@@ -22,8 +22,8 @@ export const CATEGORIES = [
   // 经营
   { code: 'C', name: '经营混账', kind: 'EXPENSE', groupName: '经营', remark: '公司的钱从个人账户付出，月度剥离；配合「公司款」标记使用' },
   // 收入
-  { code: 'I1', name: '以虎工资', kind: 'INCOME', groupName: '收入', keywords: '以虎,工资,薪资,代发' },
-  { code: 'I2', name: '栗海薪酬', kind: 'INCOME', groupName: '收入', keywords: '栗海' },
+  { code: 'I1', name: '示例公司工资', kind: 'INCOME', groupName: '收入', keywords: '示例公司,工资,薪资,代发' },
+  { code: 'I2', name: '示例贸易薪酬', kind: 'INCOME', groupName: '收入', keywords: '示例贸易' },
   { code: 'I3', name: '分红/项目款', kind: 'INCOME', groupName: '收入', keywords: '分红,项目款' },
   { code: 'I4', name: '其他收入', kind: 'INCOME', groupName: '收入', keywords: '退款,利息,报销' },
   { code: 'I5', name: '投资收益', kind: 'INCOME', groupName: '收入', keywords: '基金分红,股息,收益' },

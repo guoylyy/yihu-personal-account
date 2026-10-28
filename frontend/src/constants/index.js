@@ -31,7 +31,7 @@ export const BIZ_STATUS = [
   { value: 'REIMBURSED', label: '已报销', tag: 'success' },
   { value: 'WRITTEN_OFF', label: '不追回', tag: 'info' }
 ]
-export const ORGS = ['以虎科技', '免力教育', '晶诺云', '同舟联云', '栗海', '火锅店', '其他']
+export const ORGS = ['示例科技', '示例教育', '示例云', '示例联合', '示例贸易', '火锅店', '其他']
 export const HOLDING_TYPES = [
   { value: 'STOCK', label: '股票' },
   { value: 'FUND', label: '基金' },

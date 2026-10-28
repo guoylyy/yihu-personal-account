@@ -55,7 +55,7 @@ ${ctx.loans.map((l) => `- ${l.counterparty}（${l.direction === 'LEND' ? '我借
 
 ## 记账口径
 - 只记实际发生的钱。夫妻/家庭内部划转用 T4。还信用卡、转余额宝等自己账户之间的钱用 transfer 类型。
-- 公司的钱（替公司付的云服务、员工报销、合伙人款、办公室房租等）isBusiness=true，categoryCode 用最贴近的科目或 C，businessOrg 写公司名（以虎/免力/晶诺云/同舟联云/栗海）。
+- 公司的钱（替公司付的云服务、员工报销、合伙人款、办公室房租等）isBusiness=true，categoryCode 用最贴近的科目或 C，businessOrg 写公司名（示例科技/示例教育/示例云/示例联合/示例贸易 等）。
 - 日期：「今天/昨天/前天/上周五/9月3号」换算成 YYYY-MM-DD；没说日期就用今天。
 - 金额：「3千」=3000，「1.2万」=12000，「128块5」=128.5。
 - 一段话里有几笔就拆成几条；截图里每一笔交易都是一条。看不清/不确定的字段留 null，并在 note 里说明。
@@ -121,7 +121,7 @@ export async function ruleParse(text) {
     items.push({
       type: 'transaction', date: parseDate(line), direction, amount,
       account: acc?.name || null, categoryCode: null, counterparty: null, description: desc || line,
-      isBusiness: /公司|报销|以虎|免力|晶诺云|同舟/.test(line), confidence: 0.5, note: '规则解析，请核对'
+      isBusiness: /公司|报销|垫付|代付/.test(line), confidence: 0.5, note: '规则解析，请核对'
     })
   }
   return items

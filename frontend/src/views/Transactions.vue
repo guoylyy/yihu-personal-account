@@ -185,7 +185,7 @@ async function doBatch(body) {
   } catch (e) { ElMessage.error(e.message) }
 }
 async function markBiz() {
-  const { value } = await ElMessageBox.prompt('属于哪家公司？', '标为公司款', { inputPlaceholder: '以虎科技 / 免力教育 / …' }).catch(() => ({}))
+  const { value } = await ElMessageBox.prompt('属于哪家公司？', '标为公司款', { inputPlaceholder: '示例科技 / 示例教育 / …' }).catch(() => ({}))
   if (value !== undefined) doBatch({ isBusiness: true, businessOrg: value })
 }
 
