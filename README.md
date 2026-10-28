@@ -100,13 +100,13 @@ cd ../frontend && npm install && npm run dev   # http://localhost:5193
 
 ## 部署到以虎 One
 
-本系统可以作为应用插到 [以虎 One](https://github.com/guoylyy/yihu-one) 平台（自托管的小团队工作台，统一登录 + 应用市场 + AI 助手）上：用平台的统一登录，挂在 `<平台地址>/apps/personal-finance/` 下，AI 助手可以直接查询净资产、预算和月结。本地开发不受影响——不配平台注入的 `YH_*` 环境变量时，一切照旧（账号密码登录、根路径访问）。
+本系统可以作为应用插到 [以虎 One](https://github.com/guoylyy/yihu-one) 平台（自托管的小团队工作台，统一登录 + 应用市场 + AI 助手）上：用平台的统一登录，挂在 `<平台地址>/apps/personal-account/` 下，AI 助手可以直接查询净资产、预算和月结。本地开发不受影响——不配平台注入的 `YH_*` 环境变量时，一切照旧（账号密码登录、根路径访问）。
 
-**安装**：平台控制台「管理 → 应用 → 从 Git 安装应用」填本仓库地址 `https://github.com/guoylyy/yihu-personal-account` 和 code `personal-finance`；或在平台服务器上：
+**安装**：平台控制台「管理 → 应用 → 从 Git 安装应用」填本仓库地址 `https://github.com/guoylyy/yihu-personal-account` 和 code `personal-account`；或在平台服务器上：
 
 ```bash
-./yh add personal-finance --git https://github.com/guoylyy/yihu-personal-account     # 本机目录用 --path
-./yh up personal-finance
+./yh add personal-account --git https://github.com/guoylyy/yihu-personal-account     # 本机目录用 --path
+./yh up personal-account
 ```
 
 **发布**：在 `main` 上开发，要上线时 `./release.sh`（检查 → 构建 → 推到 `release` 分支），平台两分钟内自动发布，失败自动回滚。
@@ -116,18 +116,18 @@ cd ../frontend && npm install && npm run dev   # http://localhost:5193
 ```bash
 mysqldump -uroot -proot --single-transaction --routines personal_finance | gzip > /tmp/personal_finance.sql.gz
 # 拷到平台服务器后，在平台目录：
-./yh restore personal-finance /tmp/personal_finance.sql.gz && ./yh restart personal-finance
+./yh restore personal-account /tmp/personal_finance.sql.gz && ./yh restart personal-account
 ```
 
 **从旧版（单主人）数据升级到多租户**：旧库没有 `userId` 列，而新版 schema 给各表加了带 `userId` 的唯一约束——应用启动时的 `db push`（不带 `--accept-data-loss`）会拒绝这种改动，导致发布失败回滚。要先手动放行一次并回填历史数据，再上线（在平台服务器上执行）：
 
 ```bash
-git -C apps/personal-finance/src fetch origin release && git -C apps/personal-finance/src checkout -f --detach FETCH_HEAD
-docker compose -f apps/personal-finance/compose.yml build
-docker run --rm --network yh-app-personal-finance --env-file apps/personal-finance/.env \
-  yh-app-personal-finance:latest \
+git -C apps/personal-account/src fetch origin release && git -C apps/personal-account/src checkout -f --detach FETCH_HEAD
+docker compose -f apps/personal-account/compose.yml build
+docker run --rm --network yh-app-personal-account --env-file apps/personal-account/.env \
+  yh-app-personal-account:latest \
   sh -c "npx prisma db push --accept-data-loss --skip-generate && node prisma/migrate-tenant.js"
-./yh up personal-finance
+./yh up personal-account
 ```
 
 `migrate-tenant.js` 幂等：把所有 `userId` 为空的历史数据归属到账本主人。以后 schema 再新增唯一约束，同样要在上线前手动 `db push --accept-data-loss` 一次。
@@ -137,11 +137,11 @@ docker run --rm --network yh-app-personal-finance --env-file apps/personal-finan
 | 清单 | `yh-app.json`（端口 3020、健康检查 `/api/health`、需要数据库、MCP `/mcp`） |
 | 镜像 | `Dockerfile`：构建前端，后端托管页面；启动时 `prisma db push`（会丢数据的改动直接失败，平台回滚），`seed.js` 可重复执行，只补科目（`backend/data/` 不进镜像） |
 | 统一登录 | `backend/src/lib/platform.js` + `platform-users.js` + `tenant.js`：多租户。平台用户首次进入自动开户（`platform_<id>`，只走 SSO，无本地密码）并初始化一套标准科目，数据按 `userId` 隔离；兼容旧单主人数据：还没人绑定时第一个进来的平台用户接管最早的账号及其历史数据。清单可见范围已放开（全部登录用户可见） |
-| 本地密码登录 | 在平台上默认关闭（种子里的默认密码不能暴露在公网上），确需时 `apps/personal-finance/.env` 里设 `ALLOW_LOCAL_LOGIN=true` |
-| 页面路径 | 后端给 `index.html` 注入 `<base href="/apps/personal-finance/">`，前端接口、路由都从 `frontend/src/api/base.js` 的 `BASE` 拼 |
+| 本地密码登录 | 在平台上默认关闭（种子里的默认密码不能暴露在公网上），确需时 `apps/personal-account/.env` 里设 `ALLOW_LOCAL_LOGIN=true` |
+| 页面路径 | 后端给 `index.html` 注入 `<base href="/apps/personal-account/">`，前端接口、路由都从 `frontend/src/api/base.js` 的 `BASE` 拼 |
 | AI 工具（只读） | `get_financial_overview` 财务总览、`get_budget_execution` 预算执行、`get_month_summary` 月结摘要 |
 | JWT 密钥 | 没配 `JWT_SECRET` 时从平台注入的应用密钥派生 |
-| AI 记账 | 容器里没有 `claude` 命令行：在 `apps/personal-finance/.env` 里填 `ANTHROPIC_API_KEY`（自动用 anthropic），不填则只用规则解析 |
+| AI 记账 | 容器里没有 `claude` 命令行：在 `apps/personal-account/.env` 里填 `ANTHROPIC_API_KEY`（自动用 anthropic），不填则只用规则解析 |
 
 ---
 

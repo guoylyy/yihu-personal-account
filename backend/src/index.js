@@ -48,7 +48,7 @@ app.use('/api/pf/ai', aiRouter)
 // ---------- 以虎 One 接入：统一登录 + AI 工具（只读） ----------
 const period = { type: 'string', description: '月份 YYYY-MM，默认本月' }
 mountPlatform(app, {
-  appName: 'personal-finance',
+  appName: 'personal-account',
   resolveUser,
   signFor,
   tools: [

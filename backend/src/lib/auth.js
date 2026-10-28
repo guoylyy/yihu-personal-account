@@ -4,7 +4,7 @@ import crypto from 'node:crypto'
 
 // 部署在以虎 One 上没配 JWT_SECRET 时，从平台注入的应用密钥派生（重置应用密钥 = 重新登录）
 const SECRET = process.env.JWT_SECRET ||
-  (process.env.YH_CLIENT_SECRET && crypto.createHash('sha256').update(`personal-finance-jwt:${process.env.YH_CLIENT_SECRET}`).digest('hex')) ||
+  (process.env.YH_CLIENT_SECRET && crypto.createHash('sha256').update(`personal-account-jwt:${process.env.YH_CLIENT_SECRET}`).digest('hex')) ||
   'dev-secret'
 const EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d'
 
