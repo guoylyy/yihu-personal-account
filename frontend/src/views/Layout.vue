@@ -36,8 +36,7 @@
           <span class="title">{{ route.meta.title }}</span>
         </div>
         <div class="right">
-          <el-button v-if="!isMobile" type="primary" @click="quick = true"><el-icon><MagicStick /></el-icon>&nbsp;AI 记一笔</el-button>
-          <!-- 手机端顶栏只留「菜单 / 标题 / 头像」，AI 记一笔收进头像下拉 -->
+          <el-button type="primary" class="ai-open-btn" @click="toggleDrawer"><el-icon><MagicStick /></el-icon>&nbsp;AI 记账</el-button>
           <el-dropdown :trigger="isMobile ? 'click' : 'hover'" @command="onCommand">
             <span class="user">
               <el-avatar v-if="isMobile" :size="32" style="background: var(--text)">{{ user?.name?.[0] || '我' }}</el-avatar>
@@ -51,7 +50,6 @@
               <el-dropdown-menu>
                 <template v-if="isMobile">
                   <el-dropdown-item disabled class="m-user-line">{{ user?.name }}</el-dropdown-item>
-                  <el-dropdown-item command="quick" divided><el-icon><MagicStick /></el-icon>AI 记一笔</el-dropdown-item>
                 </template>
                 <el-dropdown-item command="settings">系统设置</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
@@ -67,9 +65,7 @@
       </el-main>
     </el-container>
 
-    <el-drawer v-model="quick" title="AI 记一笔" size="720px" destroy-on-close>
-      <AiEntry compact @committed="onCommitted" />
-    </el-drawer>
+    <AiDrawer />
   </el-container>
 </template>
 
@@ -79,24 +75,23 @@ import { useRoute, useRouter } from 'vue-router'
 import { getUser, clearAuth } from '@/api'
 import { getPlatformHome } from '@/api/base'
 import { loadMeta } from '@/composables/useMeta'
-import AiEntry from '@/components/AiEntry.vue'
+import AiDrawer from '@/components/AiDrawer.vue'
 import NavMenu from './NavMenu.vue'
 import { useViewport } from '@/composables/useViewport'
+import { toggleDrawer, resetAi } from '@/composables/useAiAssistant'
 
 const route = useRoute()
 const router = useRouter()
 const user = ref(getUser())
-const quick = ref(false)
 const navOpen = ref(false)
 const { isMobile, isTablet } = useViewport()
 
 onMounted(() => loadMeta().catch(() => {}))
 
-function onCommitted() { quick.value = false }
 function onCommand(cmd) {
-  if (cmd === 'quick') { quick.value = true; return }
   if (cmd === 'settings') return router.push('/settings')
   clearAuth()
+  resetAi() // 草稿和引用在内存里，不清掉下一个登录的人会看到
   // 从以虎 One 进来的：回到平台工作台（留在这里会被自动再登录一次）
   const home = getPlatformHome()
   if (home) location.href = home
@@ -129,6 +124,8 @@ function onCommand(cmd) {
   .crumb { min-width: 0; flex: 1; gap: 4px; }
   .title { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .m-menu-btn { flex-shrink: 0; }
+  .right { gap: 6px; flex-shrink: 0; }
+  .ai-open-btn { min-height: 44px; padding: 0 12px; font-size: 14px; }
   .user { min-width: 44px; min-height: 44px; justify-content: center; }
   .main { padding: 12px 12px calc(16px + env(safe-area-inset-bottom)); }
 }

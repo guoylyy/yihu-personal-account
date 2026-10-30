@@ -93,8 +93,9 @@
           </template>
         </el-table-column>
         <el-table-column label="来源" width="60"><template #default="{ row }"><el-tag size="small" effect="plain" :type="tagOf(SOURCES, row.source)">{{ labelOf(SOURCES, row.source) }}</el-tag></template></el-table-column>
-        <el-table-column label="操作" width="96" fixed="right">
+        <el-table-column label="操作" width="124" fixed="right">
           <template #default="{ row }">
+            <PinButton type="transaction" :id="row.id" :label="`${row.code} ${row.direction === 'IN' ? '+' : '−'}${money(row.amount)}`" />
             <el-button link type="primary" @click="openForm(row)">编辑</el-button>
             <el-button link type="danger" @click="remove(row)">作废</el-button>
           </template>
@@ -152,7 +153,9 @@ import { accountOptions, categoryGroups, categories, loadMeta } from '@/composab
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 import ResponsivePager from '@/components/mobile/ResponsivePager'
 import FilterBar from '@/components/mobile/FilterBar.vue'
+import PinButton from '@/components/PinButton.vue'
 import { useViewport } from '@/composables/useViewport'
+import { useAiPageContext, onAiCommitted } from '@/composables/useAiAssistant'
 
 const route = useRoute()
 const router = useRouter()
@@ -261,6 +264,8 @@ async function remove(row) {
 watch(() => route.query, () => { if (route.path === '/transactions') { fromRoute(); reload() } })
 onMounted(() => { loadMeta(); fromRoute(); load() })
 onActivated(load)
+onAiCommitted(load)
+useAiPageContext(() => ({ period: q.period, account_id: q.account_id, category_id: q.category_id, scope: q.scope, direction: q.direction }))
 </script>
 
 <style scoped>

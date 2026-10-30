@@ -5,7 +5,8 @@
 
 ## 动手前
 - 读 README「口径」和「硬约定」。
-- 写流水只走 `backend/src/lib/ledger.js`；新增会产生现金变动的动作，也在 ledger 里加，并补到 `aiEntry.js` 的 `commitOne` 和提示词字段说明里。
+- 写流水只走 `backend/src/lib/ledger.js`；新增会产生现金变动的动作，也在 ledger 里加，并补到 `aiEntry.js` 的 `commitOne`、`missingOf`、提示词字段说明，以及 `aiDrafts.js` 的 `CONTENT_FIELDS`（漏了指纹会判错重复）。
+- AI 入账一律走 `POST /api/pf/ai/drafts/:id/submit`（幂等），前端不要再用 `/ai/commit`。退出登录要 `resetAi()`，草稿在内存单例里。
 - 多租户：业务读写一律带租户过滤（`backend/src/lib/tenant.js` 的 `tenantWhere()` / `resolveUid()`），写数据一律带 `userId`，新增表先加 `userId` 列——漏过滤就是串账
 - 新增科目代码时同步 `prisma/categories.js` 的 `CATEGORIES`；统计口径改动集中在 `lib/networth.js`。
 - 个人数据只放 `backend/data/`（已 gitignore），不要写进代码或提示词。
@@ -14,6 +15,8 @@
 ## 本地环境
 - MySQL：`mysql://root:root@localhost:3306/personal_finance`
 - 后端 3020，前端 5193（vite 代理 `/api` 到后端）
+
+- 测试：`cd backend && npm test`（`AI_PROVIDER=stub`，不调真实模型，进程内起 app，不依赖在跑的后端）
 
 ## 以虎 One 接入
 - 可部署到以虎 One（见 README「部署到以虎 One」）。接入代码集中在 `backend/src/lib/platform.js`、`platform-users.js` 和 `frontend/src/api/base.js`

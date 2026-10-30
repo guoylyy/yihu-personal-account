@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client'
 import { nextTxnCode } from './code.js'
 import { recalcAccountBalance } from './balance.js'
 import { toDate } from './period.js'
-import { categoryByCode } from './classify.js'
+import { categoryByCode, learnRule } from './classify.js'
 import { logAudit } from './audit.js'
 import { round2 } from './money.js'
 import { resolveUid, tenantWhere } from './tenant.js'
@@ -13,6 +13,21 @@ import crypto from 'node:crypto'
 
 const D = (v) => new Prisma.Decimal(v || 0)
 const big = (v) => (v === undefined || v === null || v === '' ? null : BigInt(v))
+
+// 引用的账户/科目必须属于当前用户：请求和草稿里的 id 都是前端传的，不校验就会把流水挂到别人的账户上
+const ownId = (v, label) => {
+  if (!/^[1-9]\d{0,18}$/.test(String(v))) throw new Error(`${label}不存在或无权访问`)
+  return BigInt(v)
+}
+export async function assertOwnRefs({ accountIds = [], categoryId }, userId) {
+  for (const a of accountIds) {
+    if (a === undefined || a === null || a === '') continue
+    if (!(await prisma.account.findFirst({ where: { id: ownId(a, '账户'), userId, deletedAt: null }, select: { id: true } }))) throw new Error('账户不存在或无权访问')
+  }
+  if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
+    if (!(await prisma.category.findFirst({ where: { id: ownId(categoryId, '科目'), userId, deletedAt: null }, select: { id: true } }))) throw new Error('科目不存在或无权访问')
+  }
+}
 
 export async function createTransaction(input, { source = 'MANUAL', recalc = true } = {}) {
   const amount = round2(Math.abs(Number(input.amount)))
@@ -22,11 +37,13 @@ export async function createTransaction(input, { source = 'MANUAL', recalc = tru
   const userId = resolveUid(input.userId)
   let categoryId = big(input.categoryId)
   if (!categoryId && input.categoryCode) categoryId = (await categoryByCode(input.categoryCode, userId))?.id || null
+  await assertOwnRefs({ accountIds: [input.accountId], categoryId }, userId)
 
-  const row = await prisma.transaction.create({
+  // 编号是读最大值再加一，并发时撞唯一索引就重新取号
+  const insert = async (code) => prisma.transaction.create({
     data: {
       userId,
-      code: input.code || (await nextTxnCode(txnDate, userId)),
+      code,
       txnDate,
       txnTime: input.txnTime || null,
       direction: input.direction,
@@ -49,7 +66,46 @@ export async function createTransaction(input, { source = 'MANUAL', recalc = tru
       remark: input.remark || null
     }
   })
+  let row
+  for (let attempt = 0; !row; attempt++) {
+    try {
+      row = await insert(input.code || (await nextTxnCode(txnDate, userId)))
+    } catch (e) {
+      if (input.code || e?.code !== 'P2002' || !String(e.meta?.target).includes('code') || attempt >= 5) throw e
+    }
+  }
   if (recalc && row.accountId) await recalcAccountBalance(row.accountId, userId)
+  return row
+}
+
+const EDITABLE = ['txnDate', 'txnTime', 'direction', 'amount', 'accountId', 'categoryId', 'counterparty', 'description', 'channel', 'isBusiness', 'businessOrg', 'bizStatus', 'remark']
+
+/** 改流水：手工编辑和 AI「把这笔改成…」共用。流水不存在或不属于当前用户时返回 null */
+export async function updateTransaction(rawId, input, { include } = {}) {
+  const id = BigInt(rawId)
+  const userId = resolveUid()
+  const before = await prisma.transaction.findFirst({ where: { id, userId, deletedAt: null } })
+  if (!before) return null
+  const data = {}
+  for (const k of EDITABLE) {
+    if (input[k] === undefined) continue
+    let v = input[k] === '' ? null : input[k]
+    if (k === 'txnDate') v = toDate(v)
+    if ((k === 'accountId' || k === 'categoryId') && v != null) v = BigInt(v)
+    if (k === 'amount') v = round2(Math.abs(Number(v)))
+    data[k] = v
+  }
+  // 账户已被软删的老流水，原值原样带回来时不算改动
+  await assertOwnRefs({
+    accountIds: data.accountId != null && data.accountId !== before.accountId ? [data.accountId] : [],
+    categoryId: data.categoryId != null && data.categoryId !== before.categoryId ? data.categoryId : null
+  }, userId)
+  if (data.isBusiness === true && !before.bizStatus && !data.bizStatus) data.bizStatus = 'PENDING'
+  if (data.isBusiness === false) { data.bizStatus = null; data.businessOrg = null }
+  const row = await prisma.transaction.update({ where: { id }, data, include })
+  for (const a of new Set([before.accountId, row.accountId].filter(Boolean).map(String))) await recalcAccountBalance(a)
+  if (input.learn && row.counterparty && row.categoryId) await learnRule(row.counterparty, row.categoryId, row.isBusiness)
+  await logAudit({ action: 'UPDATE', entity: '流水', entityId: id, summary: `修改流水 ${row.code}`, before, after: row })
   return row
 }
 
@@ -57,6 +113,7 @@ export async function createTransaction(input, { source = 'MANUAL', recalc = tru
 export async function createTransfer({ fromAccountId, toAccountId, amount, txnDate, description, categoryCode }, opt = {}) {
   if (!fromAccountId || !toAccountId) throw new Error('转账需要转出和转入两个账户')
   if (String(fromAccountId) === String(toAccountId)) throw new Error('转出和转入不能是同一个账户')
+  await assertOwnRefs({ accountIds: [fromAccountId, toAccountId] }, resolveUid())
   const [from, to] = await Promise.all([
     prisma.account.findFirst({ where: tenantWhere({ id: BigInt(fromAccountId) }) }),
     prisma.account.findFirst({ where: tenantWhere({ id: BigInt(toAccountId) }) })
@@ -100,6 +157,7 @@ export async function holdingTrade(input, { source = 'MANUAL' } = {}) {
   const userId = resolveUid(input.userId)
   const h = await prisma.holding.findFirst({ where: tenantWhere({ id: BigInt(input.holdingId), deletedAt: null }) })
   if (!h) throw new Error('持仓不存在')
+  await assertOwnRefs({ accountIds: [input.cashAccountId] }, userId)
   const action = input.action
   const qty = input.quantity != null && input.quantity !== '' ? Number(input.quantity) : null
   const price = input.price != null && input.price !== '' ? Number(input.price) : null
@@ -201,6 +259,7 @@ export async function loanRepay(input, { source = 'MANUAL' } = {}) {
   const principal = round2(input.principalPart || 0)
   const interest = round2(input.interestPart || 0)
   if (!principal && !interest) throw new Error('本金和利息至少填一个')
+  await assertOwnRefs({ accountIds: [input.accountId] }, userId)
   const repayDate = toDate(input.repayDate || new Date())
   const rep = await prisma.loanRepayment.create({
     data: { userId, loanId: loan.id, repayDate, principalPart: principal, interestPart: interest, accountId: big(input.accountId), source, remark: input.remark || null }

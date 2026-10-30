@@ -56,11 +56,13 @@ import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import { useAiPageContext, onAiCommitted } from '@/composables/useAiAssistant'
 import { money, moneyShort, currentPeriod, periodOptions } from '@/utils/format'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 
 const router = useRouter()
 const period = ref(currentPeriod())
+useAiPageContext(() => ({ period: period.value }))
 const checks = ref([])
 const md = ref('')
 const html = ref('')
@@ -86,6 +88,7 @@ async function snapshot() {
 async function copy() { await navigator.clipboard.writeText(md.value); ElMessage.success('已复制，可以贴到 Obsidian') }
 onMounted(load)
 onActivated(load)
+onAiCommitted(load)
 </script>
 
 <style scoped>

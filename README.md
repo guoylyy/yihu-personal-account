@@ -55,9 +55,16 @@
 |---|---|
 | `claude-cli`（默认） | 调本机已登录的 `claude` 命令行，无需 API Key。文字约 5~20 秒，截图约 10 秒。`AI_CLI_MODEL=haiku` 更快，`sonnet` 更准 |
 | `anthropic` | 用 `ANTHROPIC_API_KEY` 直连 Messages API（`AI_MODEL` 默认 `claude-opus-5`），部署到服务器用这个 |
-| `off` | 不调模型，只用规则解析简单句子 |
+| `off` | 不调模型，只用规则解析简单句子和「把这笔改成餐饮」 |
+| `stub` | 不发任何外部请求，按 `lib/llmStub.js` 的规则返回确定结果；`npm test` 和本地联调用 |
 
 解析优先级：**你学过的规则 > 模型判断 > 科目关键字**。AI 只产出草稿，入账永远要点确认。每次解析都记在 `AiEntryLog`，方便回看。
+
+**随身抽屉**：顶栏「AI 记账」在任何页面打开，切换页面不关、草稿保留（`/ai` 是完整模式，多了只读问答）。列表上的 `@` 把记录放进引用，可以直接说「把这笔改成餐饮」「这笔还信用卡」「还了 2000」。
+
+**「这笔」指什么**：用户明确说的 > `@` 引用的 > 当前页筛选 > 不确定就问。`@` 到的记录由服务端按当前用户重新查库，越权或不存在时整句拒绝，不会丢掉引用继续出草稿。
+
+**提交幂等**：草稿落库（`AiDraft`），入账走 `POST /api/pf/ai/drafts/:id/submit`。同一草稿重复提交返回第一次的结果；内容相同的另一张草稿 60 秒内也按重复处理，靠 `AiSubmission.fingerprint` 唯一索引挡并发。同一批解析里两笔一样的账不算重复。细节见 `docs/接口说明.md`。
 
 ---
 
@@ -102,7 +109,7 @@ cd ../frontend && npm install && npm run dev   # http://localhost:5193
 
 本系统可以作为应用插到 [以虎 One](https://github.com/guoylyy/yihu-one) 平台（自托管的小团队工作台，统一登录 + 应用市场 + AI 助手）上：用平台的统一登录，挂在 `<平台地址>/apps/personal-account/` 下，AI 助手可以直接查询净资产、预算和月结。本地开发不受影响——不配平台注入的 `YH_*` 环境变量时，一切照旧（账号密码登录、根路径访问）。
 
-**版本**：当前 `1.0.0`（`VERSION` 文件与 `yh-app.json` 的 `version` 字段保持一致，遵循语义化版本；每次发版同步更新，平台据此展示与升级比对）。
+**版本**：当前 `1.2.0`（`VERSION` 文件与 `yh-app.json` 的 `version` 字段保持一致，遵循语义化版本；每次发版同步更新，平台据此展示与升级比对）。
 
 **安装**：平台控制台「管理 → 应用 → 从 Git 安装应用」填本仓库地址 `https://github.com/guoylyy/yihu-personal-account` 和 code `personal-account`；或在平台服务器上：
 
@@ -161,12 +168,25 @@ backend/
   src/lib/ledger.js         记账动作（流水、互转、持仓交易、估值、还款、校准）
   src/lib/networth.js       资产负债表、月度收支统计
   src/lib/aiEntry.js        AI 录入：上下文 → 解析 → 对 id → 入账；规则兜底
-  src/lib/llm.js            模型调用（claude-cli / anthropic / off）
+  src/lib/aiContext.js      页面上下文与 @ 引用：重新查库、解析优先级
+  src/lib/aiDrafts.js       草稿落库与提交幂等（草稿锁 + 指纹唯一索引）
+  src/lib/llm.js            模型调用（claude-cli / anthropic / off / stub）
+  test/                     node --test，进程内起 app + stub 模型，自建数据、跑完硬删除
   src/lib/billParser.js     微信/支付宝/银行账单解析
   src/lib/classify.js       规则分类与学习
 frontend/src/
-  components/AiEntry.vue    AI 录入组件（页面和顶栏抽屉共用）
+  components/AiEntry.vue    AI 录入组件（/ai 页和抽屉共用，状态在 composables/useAiAssistant.js）
+  components/AiDrawer.vue   全局抽屉，挂在 Layout 上，不随路由销毁
   views/                    12 个页面
+```
+
+---
+
+## 测试
+
+```bash
+cd backend && npm test        # 不需要模型，也不需要后端在跑，只需要 .env 里的数据库；自建数据，跑完硬删除
+cd frontend && npm run build && APP_URL=http://127.0.0.1:3020 node scripts/mobile-audit.mjs audit   # 移动端验收，含抽屉打开态
 ```
 
 ---

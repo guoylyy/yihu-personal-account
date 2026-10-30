@@ -115,6 +115,7 @@ export const api = {
     parse: (fd) => upload(`${B}/ai/parse`, fd, AI_TIMEOUT),
     resolve: (items) => post(`${B}/ai/resolve`, { items }),
     commit: (b) => post(`${B}/ai/commit`, b, { timeout: 60000 }),
+    submitDraft: (id, item) => post(`${B}/ai/drafts/${id}/submit`, { item }, { timeout: 60000 }),
     logs: () => get(`${B}/ai/logs`),
     ask: (question) => post(`${B}/ai/ask`, { question }, { timeout: AI_TIMEOUT })
   }

@@ -2,13 +2,15 @@
 // 三种模式（.env 的 AI_PROVIDER）：
 //   claude-cli  默认。复用本机已登录的 `claude` 命令行，不需要 API Key；图片会落临时文件让它用 Read 工具看
 //   anthropic   用 ANTHROPIC_API_KEY 直连 Messages API（更快，适合部署到服务器）
-//   off         不调模型，只用规则解析（lib/ruleParser.js）
+//   off         不调模型，只用规则解析（lib/aiEntry.js 的 ruleParse）
+//   stub        不发任何外部请求，按 lib/llmStub.js 的规则返回确定结果（测试和本地联调用）
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import Anthropic from '@anthropic-ai/sdk'
+import { stubLLM } from './llmStub.js'
 
 // 没配 AI_PROVIDER 时：有 API Key 用 anthropic；部署在以虎 One 的容器里没有 claude 命令行，关掉；本机默认 claude-cli
 export const provider = () => (process.env.AI_PROVIDER ||
@@ -17,6 +19,7 @@ export const provider = () => (process.env.AI_PROVIDER ||
 export function aiStatus() {
   const p = provider()
   if (p === 'off') return { enabled: false, provider: p, hint: 'AI 已关闭，只用规则解析' }
+  if (p === 'stub') return { enabled: true, provider: p, model: 'stub' }
   if (p === 'anthropic') {
     const has = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
     return { enabled: has, provider: p, model: process.env.AI_MODEL || 'claude-opus-5', hint: has ? '' : '缺少 ANTHROPIC_API_KEY' }
@@ -48,6 +51,7 @@ export async function llmJSON({ system, prompt, images = [], timeoutMs = 120000 
   const p = provider()
   const t0 = Date.now()
   if (p === 'off') throw new Error('AI 未开启（AI_PROVIDER=off）')
+  if (p === 'stub') return { data: await stubLLM({ system, prompt, images }), provider: p, ms: Date.now() - t0 }
   const text = p === 'anthropic'
     ? await viaApi({ system, prompt, images })
     : await viaCli({ system, prompt, images, timeoutMs })

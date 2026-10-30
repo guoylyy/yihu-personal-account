@@ -8,7 +8,7 @@
     "seed": "node prisma/seed.js",
     "import:2026": "node scripts/import-2026-bills.js",
     "db:push": "prisma db push",
-    "test": "node --test test/"
+    "test": "node test/run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",

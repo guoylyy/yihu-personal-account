@@ -7,7 +7,7 @@
       </div>
     </div>
     <el-row :gutter="16">
-      <el-col :xs="24" :lg="16"><AiEntry @committed="loadLogs" /></el-col>
+      <el-col :xs="24" :lg="16"><AiEntry /></el-col>
       <el-col :xs="24" :lg="8">
         <div class="section-title" style="margin-top: 0">问问 AI（只读）</div>
         <div class="table-card ask">
@@ -42,6 +42,7 @@ import { ElMessage } from 'element-plus'
 import api from '@/api'
 import AiEntry from '@/components/AiEntry.vue'
 import { datetime } from '@/utils/format'
+import { onAiCommitted } from '@/composables/useAiAssistant'
 
 const logs = ref([])
 const question = ref('')
@@ -58,6 +59,7 @@ async function ask() {
   } catch (e) { ElMessage.error(e.message) } finally { asking.value = false }
 }
 onMounted(loadLogs)
+onAiCommitted(loadLogs)
 </script>
 
 <style scoped>

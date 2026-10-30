@@ -4,7 +4,7 @@
                subtitle="个人视角：我借出去的是应收（资产），我借进来的是负债（含房贷）。方向或金额待核实的，状态选「待核实」暂不计入净资产"
                :columns="columns" :form-fields="formFields" :default-form="{ direction: 'LEND', kind: 'PERSONAL', status: 'ACTIVE', includeInNetWorth: true }"
                :filters="[{ prop: 'direction', label: '方向', type: 'select', options: LOAN_DIRECTIONS }, { prop: 'status', label: '状态', type: 'select', options: LOAN_STATUS }]"
-               :action-width="200" @loaded="onLoaded">
+               :action-width="224" @loaded="onLoaded">
       <template #stats>
         <div class="stat-grid">
           <div class="stat-card is-success"><div class="label">应收（别人欠我）</div><div class="value">¥{{ money(sum.lend) }}</div></div>
@@ -17,6 +17,7 @@
         <div class="muted" style="font-size: 12px">本金 {{ money(row.principal) }}</div>
       </template>
       <template #row-actions="{ row }">
+        <PinButton type="loan" :id="row.id" :label="row.counterparty" />
         <el-button v-if="row.status !== 'SETTLED'" link type="primary" @click="openRepay(row)">{{ row.direction === 'LEND' ? '登记回款' : '登记还款' }}</el-button>
         <el-button link @click="openHistory(row)">记录</el-button>
       </template>
@@ -52,12 +53,15 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '@/api'
 import CrudTable from '@/components/CrudTable.vue'
+import PinButton from '@/components/PinButton.vue'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 import { money, date } from '@/utils/format'
 import { LOAN_DIRECTIONS, LOAN_KINDS, LOAN_STATUS, opts } from '@/constants'
 import { accountOptions } from '@/composables/useMeta'
+import { onAiCommitted } from '@/composables/useAiAssistant'
 
 const table = ref()
+onAiCommitted(() => table.value?.reload())
 const sum = reactive({ lend: 0, borrow: 0, pending: 0 })
 const columns = [
   { prop: 'direction', label: '方向', type: 'tag', tagList: LOAN_DIRECTIONS, width: 120 },

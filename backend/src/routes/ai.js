@@ -2,25 +2,67 @@ import express from 'express'
 import multer from 'multer'
 import dayjs from 'dayjs'
 import prisma from '../lib/prisma.js'
-import { ok, badRequest, wrap } from '../lib/response.js'
+import { ok, badRequest, notFound, fail, wrap } from '../lib/response.js'
 import { aiStatus, llmJSON } from '../lib/llm.js'
 import { parseEntry, commitItems, resolveItems, ITEM_TYPES } from '../lib/aiEntry.js'
 import { balanceSheet, periodStats } from '../lib/networth.js'
 import { currentUserId } from '../lib/tenant.js'
+import { loadContext, applyRefs, ContextError } from '../lib/aiContext.js'
+import { saveDrafts, getDraft, draftView, submitDraft } from '../lib/aiDrafts.js'
 
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 6 } })
+const MAX_DRAFT_ITEMS = 100
+
+// 页面上下文：@ 越权或不存在时直接回错误（返回 null），不进模型、不出草稿
+async function contextOf(res, raw) {
+  try {
+    return await loadContext(raw)
+  } catch (e) {
+    if (!(e instanceof ContextError)) throw e
+    e.code === 9004 ? notFound(res, e.message) : badRequest(res, e.message)
+    return null
+  }
+}
 
 router.get('/status', (req, res) => ok(res, { ...aiStatus(), types: ITEM_TYPES }))
 
-/** 解析：text + 可选截图（multipart 字段 images） */
+/** 解析：text + 可选截图（multipart 字段 images）+ 可选页面上下文（字段 context，JSON 串）；每条草稿落库带 draftId */
 router.post('/parse', upload.array('images', 6), wrap(async (req, res) => {
   const text = String(req.body.text || '')
   const images = (req.files || [])
     .filter((f) => /^image\//.test(f.mimetype))
     .map((f) => ({ data: f.buffer, mediaType: f.mimetype }))
   if (!text.trim() && !images.length) return badRequest(res, '说点什么，或贴一张截图')
-  return ok(res, await parseEntry({ text, images }))
+  const refs = await contextOf(res, req.body.context)
+  if (!refs) return
+  const r = await parseEntry({ text, images, refs })
+  return ok(res, { ...r, items: await saveDrafts(r.items, { logId: r.logId }) })
+}))
+
+/** 草稿落库：items 走和 /resolve 一样的解析，再按上下文定修改目标；定不下来的不出草稿，返回 question */
+router.post('/drafts', wrap(async (req, res) => {
+  const items = req.body.items || (req.body.item ? [req.body.item] : [])
+  if (!Array.isArray(items) || !items.length) return badRequest(res, '没有要保存的草稿')
+  if (items.length > MAX_DRAFT_ITEMS) return badRequest(res, `一次最多 ${MAX_DRAFT_ITEMS} 条`)
+  const refs = await contextOf(res, req.body.context)
+  if (!refs) return
+  const applied = await applyRefs(items, refs, '')
+  const saved = await saveDrafts(await resolveItems(applied.items))
+  return ok(res, { draftId: saved.length === 1 ? saved[0].draftId : undefined, items: saved, question: applied.question })
+}))
+
+router.get('/drafts/:id', wrap(async (req, res) => {
+  const d = await getDraft(req.params.id)
+  if (!d) return notFound(res, '草稿不存在或已过期')
+  return ok(res, { ...draftView(d), payload: d.payload })
+}))
+
+/** 确认入账。body 可带用户改过的 item；不带用落库时的内容。重复提交返回第一次的结果和 duplicate: true */
+router.post('/drafts/:id/submit', wrap(async (req, res) => {
+  const r = await submitDraft(req.params.id, req.body?.item)
+  if (r.code) return fail(res, r.code, r.message)
+  return ok(res, r.data)
 }))
 
 /** 改了某条的账户/持仓名后，重新对一次 id */

@@ -3,7 +3,7 @@
     <CrudTable ref="table" :api="api.assets" title="固定资产" entity-name="资产" add-text="新增资产"
                subtitle="房产、车辆、大件。估值按市场可成交价，每季度或有变化时更新一次；对应贷款记在「借贷往来」"
                :columns="columns" :form-fields="formFields" :default-form="{ type: 'PROPERTY', owner: 'ME', status: 'HOLDING', includeInNetWorth: true }"
-               :action-width="200" :filters="[{ prop: 'type', label: '类型', type: 'select', options: ASSET_TYPES }]" @loaded="onLoaded">
+               :action-width="224" :filters="[{ prop: 'type', label: '类型', type: 'select', options: ASSET_TYPES }]" @loaded="onLoaded">
       <template #stats>
         <div class="stat-grid">
           <div class="stat-card is-accent"><div class="label">固定资产估值合计</div><div class="value">¥{{ money(sum) }}</div></div>
@@ -14,6 +14,7 @@
         <div v-if="row.purchasePrice" class="muted" style="font-size: 12px">买入 {{ moneyShort(row.purchasePrice) }}</div>
       </template>
       <template #row-actions="{ row }">
+        <PinButton type="asset" :id="row.id" :label="row.name" />
         <el-button link type="primary" @click="openVal(row)">更新估值</el-button>
         <el-button link @click="openHistory(row)">历史</el-button>
       </template>
@@ -44,11 +45,14 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '@/api'
 import CrudTable from '@/components/CrudTable.vue'
+import PinButton from '@/components/PinButton.vue'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 import { money, moneyShort, date } from '@/utils/format'
 import { ASSET_TYPES, OWNERS, opts } from '@/constants'
+import { onAiCommitted } from '@/composables/useAiAssistant'
 
 const table = ref()
+onAiCommitted(() => table.value?.reload())
 const sum = ref(0)
 const columns = [
   { prop: 'type', label: '类型', type: 'enum', tagList: ASSET_TYPES, width: 80 },

@@ -1,6 +1,6 @@
 // 移动端验收脚本（playwright）。参照 yihu-finance/frontend/scripts/mobile-audit.mjs，路由和交互态换成本系统
 //   node scripts/mobile-audit.mjs seed                      往 E2E 库灌演示数据（账本里有非 E2E 数据时拒绝执行）
-//   node scripts/mobile-audit.mjs audit                     375/768/1440 逐路由断言 + 交互态 + 触控/字号 + 1024 图标栏
+//   node scripts/mobile-audit.mjs audit                     375/768/1440 逐路由断言 + 抽屉打开态 + 交互态 + 触控/字号 + 1024 图标栏
 //   node scripts/mobile-audit.mjs shots [--out screenshots/mobile]
 //   node scripts/mobile-audit.mjs desktop --out <dir>       1440 全路由 + 桌面弹窗整页截图（回归基线/改后各跑一次）
 //   node scripts/mobile-audit.mjs compare <基线目录> <改后目录>   逐像素对比
@@ -98,13 +98,13 @@ async function seed() {
 
 // AI 解析的固定响应：覆盖最宽的几种草稿
 const AI_FIXTURE = {
-  provider: 'e2e-fixture', ms: 1234, logId: null,
+  provider: 'e2e-fixture', ms: 1234, logId: null, question: null,
   items: [
-    { type: 'transaction', date: '2026-10-29', direction: 'OUT', amount: 386, counterparty: '海底捞火锅（滨江宝龙城店）', description: '和朋友吃火锅', confidence: 0.55, note: '没说是哪张卡，按上次的信用卡猜的', warnings: ['未识别科目', '账户待确认'], matchedRule: '海底捞' },
-    { type: 'transfer', date: '2026-10-29', amount: 2000, description: '还光大信用卡' },
-    { type: 'trade', date: '2026-10-29', action: 'BUY', quantity: 100, price: 385, amount: 38500, fee: 5, confidence: 0.9 },
-    { type: 'balance', date: '2026-10-29', amount: 76543.21 },
-    { type: 'new_holding', date: '2026-10-29', holding: '中证红利ETF', holdingType: 'FUND', code: '515080', quantity: 1000, price: 1.5, amount: 1500 }
+    { draftId: '9001', type: 'transaction', date: '2026-10-29', direction: 'OUT', amount: 386, counterparty: '海底捞火锅（滨江宝龙城店）', description: '和朋友吃火锅', confidence: 0.55, note: '没说是哪张卡，按上次的信用卡猜的', warnings: ['未识别科目', '账户待确认'], matchedRule: '海底捞' },
+    { draftId: '9002', type: 'transfer', date: '2026-10-29', amount: 2000, description: '还光大信用卡' },
+    { draftId: '9003', type: 'trade', date: '2026-10-29', action: 'BUY', quantity: 100, price: 385, amount: 38500, fee: 5, confidence: 0.9 },
+    { draftId: '9004', type: 'balance', date: '2026-10-29', amount: 76543.21 },
+    { draftId: '9005', type: 'new_holding', date: '2026-10-29', holding: '中证红利ETF', holdingType: 'FUND', code: '515080', quantity: 1000, price: 1.5, amount: 1500 }
   ]
 }
 
@@ -152,7 +152,7 @@ const FIND_OVERFLOW = (vw) => {
       bad.push({ el, path: pathOf(el), right: Math.round(r.right) })
     }
   }
-  const scrollers = [...document.querySelectorAll('.main, .el-dialog__body, .el-drawer__body')]
+  const scrollers = [...document.querySelectorAll('.main, .el-dialog__body, .el-drawer__body, .ai-drawer-body, .draft-zone')]
     .filter((m) => m.offsetParent !== null && m.scrollWidth > m.clientWidth + 1)
     .map((m) => `${sel(m)} 内部可横拖 scrollWidth=${m.scrollWidth} clientWidth=${m.clientWidth}`)
   const grouped = new Map()
@@ -255,6 +255,8 @@ const device = (w) => {
   return { viewport: { width: w, height: HEIGHT[w] || 900 }, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 }
 }
 
+let draftSeq = 9100
+
 async function newPage(browser, w, state) {
   const ctx = await browser.newContext({ ...device(w), ...(state ? { storageState: state } : {}) })
   await ctx.clock.setFixedTime(FROZEN)
@@ -262,7 +264,19 @@ async function newPage(browser, w, state) {
   page.errors = []
   page.on('pageerror', (e) => page.errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => { if (m.type() === 'error' || /\[Vue warn\]/.test(m.text())) page.errors.push(m.text().slice(0, 160)) })
-  await page.route('**/api/pf/ai/parse', (r) => r.fulfill({ json: { code: 0, message: 'ok', data: AI_FIXTURE } }))
+  page.parseBodies = []
+  await page.route('**/api/pf/ai/parse', (r) => {
+    page.parseBodies.push(r.request().postData() || '')
+    return r.fulfill({ json: { code: 0, message: 'ok', data: { ...AI_FIXTURE, items: AI_FIXTURE.items.map((x) => ({ ...x, draftId: String(++draftSeq) })) } } })
+  })
+  // 入账不落库：演示账本要留给桌面回归；幂等本身由 backend/test 对真实库断言。第二次提交同一草稿回 duplicate，和服务端约定一致
+  const seen = new Set()
+  await page.route('**/api/pf/ai/drafts/*/submit', (r) => {
+    const id = r.request().url().match(/drafts\/(\d+)/)[1]
+    const duplicate = seen.has(id)
+    seen.add(id)
+    return r.fulfill({ json: { code: 0, message: 'ok', data: { draftId: id, id: '1', code: 'T-202610-00099', duplicate, submitted: true } } })
+  })
   return { ctx, page }
 }
 
@@ -270,6 +284,7 @@ const clickAdd = async (page) => {
   await page.locator('.page-head .el-button--primary').first().click()
   await page.waitForTimeout(450)
 }
+const openAi = async (page) => { await page.locator('.ai-open-btn').click(); await page.locator('.ai-drawer').waitFor({ timeout: 3000 }); await page.waitForTimeout(350) }
 const closeOverlay = async (page) => { await page.keyboard.press('Escape'); await page.waitForTimeout(350) }
 
 async function openDrafts(page) {
@@ -293,6 +308,7 @@ async function audit() {
   const state = await login(browser)
   const A = [] // 14 路由 × 3 档
   const B = [] // 交互态
+  const D = [] // 抽屉打开态：路由 × 宽度
   const quality = [] // 触控/字号
   const logErrors = new Set()
 
@@ -366,11 +382,59 @@ async function audit() {
     const drawerGone = !(await page.locator('.m-nav-drawer').isVisible().catch(() => false))
     B.push({ name: `${w} [抽屉] 点菜单后收起`, pass: drawerGone, bad: drawerGone ? [] : ['抽屉没收起'] })
 
-    // 头像菜单里的 AI 记一笔
-    await page.locator('.topbar .user').click(); await page.waitForTimeout(300)
-    await page.getByRole('menuitem', { name: /AI 记一笔/ }).click(); await page.waitForTimeout(500)
-    await add('[抽屉] AI 记一笔', await must('.el-drawer .ai-entry'))
-    await closeOverlay(page)
+    // 顶栏入口：手机在头像旁，点开是全屏 sheet
+    const label = (await page.locator('.ai-open-btn').textContent()).trim()
+    await openAi(page)
+    const sheet = await page.locator('.ai-drawer').evaluate((d) => { const r = d.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), getComputedStyle(d).paddingBottom !== undefined] })
+    await add('[AI 抽屉] 全屏 sheet', [...(await must('.ai-drawer.is-sheet .ai-entry')), ...(await must('.ai-drawer .handle')), ...(label === 'AI 记账' ? [] : [`按钮文案「${label}」`]), ...(sheet[0] === w && sheet[1] === HEIGHT[w] ? [] : [`sheet ${sheet[0]}×${sheet[1]}`])])
+    const tip = (await page.locator('.ai-drawer .tip').textContent()).trim()
+    const tipOk = !/⌘/.test(tip) && /点「解析」按钮/.test(tip)
+    B.push({ name: `${w} [AI 抽屉] 手机文案`, pass: tipOk, bad: tipOk ? [] : [tip] })
+    // 输入区贴底
+    const docked = await page.evaluate(() => { const r = document.querySelector('.ai-drawer .input-card').getBoundingClientRect(); return Math.abs(r.bottom - document.querySelector('.ai-drawer').getBoundingClientRect().bottom) <= 1 })
+    B.push({ name: `${w} [AI 抽屉] 输入区贴底`, pass: docked, bad: docked ? [] : ['输入区没贴底'] })
+
+    // 草稿卡：单列、入账按钮 ≥44、确认入账在视口内
+    await page.locator('.ai-drawer textarea').fill('昨天和朋友吃火锅 386')
+    await page.locator('.ai-drawer .actions .el-button--primary').click()
+    await page.locator('.ai-drawer .draft').first().waitFor({ timeout: 8000 }); await page.waitForTimeout(300)
+    await add('[AI 抽屉] 草稿卡', await must('.ai-drawer .draft'))
+    const card = await page.evaluate(() => {
+      const r = document.querySelector('.ai-drawer .card-submit').getBoundingClientRect()
+      const c = document.querySelector('.ai-drawer .commit-bar .el-button').getBoundingClientRect()
+      return { h: r.height, cols: getComputedStyle(document.querySelector('.ai-drawer .fields')).gridTemplateColumns.split(' ').length, confirm: c.bottom <= window.innerHeight + 1 && c.top >= 0, confirmH: c.height }
+    })
+    const cardBad = [...(card.h >= 44 ? [] : [`入账按钮高 ${card.h}`]), ...(card.cols === 1 ? [] : [`${card.cols} 列`]), ...(card.confirm ? [] : ['确认入账不在视口内']), ...(card.confirmH >= 44 ? [] : [`确认入账高 ${card.confirmH}`])]
+    B.push({ name: `${w} [AI 抽屉] 单列/入账≥44/确认固定底部`, pass: !cardBad.length, bad: cardBad })
+
+    // 切换页面：关掉 sheet 去别的页，再打开草稿还在
+    const n0 = await page.locator('.ai-drawer .draft').count()
+    await page.locator('.ai-close').click(); await page.waitForTimeout(350)
+    await page.locator('.m-menu-btn').click(); await page.waitForTimeout(400)
+    await page.locator('.m-nav-drawer .el-menu-item', { hasText: '收支流水' }).click()
+    await page.waitForURL(/transactions/); await page.waitForTimeout(500)
+    await openAi(page)
+    const n1 = await page.locator('.ai-drawer .draft').count()
+    B.push({ name: `${w} [AI 抽屉] 切页草稿保留`, pass: n0 > 0 && n1 === n0, bad: n1 === n0 ? [] : [`${n0} → ${n1}`] })
+    await page.locator('.ai-close').click(); await page.waitForTimeout(350)
+
+    // 卡片上的 @：放进引用、打开抽屉，解析时带给后端
+    await page.locator('.m-card .pin-btn').first().click(); await page.waitForTimeout(400)
+    await add('[AI 抽屉] @ 引用', await must('.ai-drawer .pin-tag'))
+    await page.locator('.ai-drawer textarea').fill('把这笔改成餐饮')
+    await page.locator('.ai-drawer .actions .el-button--primary').click(); await page.waitForTimeout(400)
+    const body = page.parseBodies.at(-1) || ''
+    const sent = /"route":"\/transactions"/.test(body) && /"pinned":\[\{"type":"transaction","id":"\d+"\}\]/.test(body)
+    B.push({ name: `${w} [AI 抽屉] 上下文和 @ 传给后端`, pass: sent, bad: sent ? [] : [body.slice(0, 200)] })
+
+    // 连点入账：第二次走重复提示，不是报错
+    const firstCard = page.locator('.ai-drawer .draft').first()
+    const did = await firstCard.locator('.card-submit').click().then(() => true).catch(() => false)
+    await page.waitForTimeout(350)
+    B.push({ name: `${w} [AI 抽屉] 单张入账`, pass: did && (await firstCard.locator('.el-tag', { hasText: '已入账' }).count()) > 0, bad: [] })
+    await page.locator('.ai-drawer .el-button', { hasText: '清空' }).click(); await page.waitForTimeout(200)
+    await page.locator('.ai-drawer .el-tag__close').first().click(); await page.waitForTimeout(200)
+    await page.locator('.ai-close').click(); await page.waitForTimeout(300)
 
     // 各页新增弹窗
     for (const [route, label] of [['accounts', '新增账户'], ['transactions', '手工记一笔'], ['holdings', '新增持仓'], ['assets', '新增资产'], ['loans', '新增借贷'], ['categories', '新增科目']]) {
@@ -438,7 +502,83 @@ async function audit() {
     await add('[AI] 草稿卡（滚到底）', [...(await must('.draft')), ...(parseBtn ? [] : ['解析按钮不在视口内'])])
     const cols = await page.evaluate(() => getComputedStyle(document.querySelector('.fields')).gridTemplateColumns.split(' ').length)
     B.push({ name: `${w} [AI] 草稿单列`, pass: cols === 1, bad: cols === 1 ? [] : [`${cols} 列`] })
+    const pageBars = await page.evaluate(() => {
+      const c = document.querySelector('.commit-bar .el-button').getBoundingClientRect()
+      const a = document.querySelector('.actions').getBoundingClientRect()
+      return c.bottom <= a.top + 1 && c.top >= 0
+    })
+    B.push({ name: `${w} [AI] 完整页确认入账固定在解析条上方`, pass: pageBars, bad: pageBars ? [] : ['位置不对'] })
+    await page.evaluate(() => document.querySelector('.ai-entry .card-submit').scrollIntoView({ block: 'center' }))
+    await page.locator('.ai-entry .card-submit').first().click(); await page.waitForTimeout(200)
     page.errors.forEach((e) => logErrors.add(`${w}: ${e}`))
+    await ctx.close()
+  }
+
+  // 抽屉打开时逐路由 0 溢出（含草稿卡）：375/768 全屏 sheet，1440 贴右侧挤窄主内容，1024 盖在内容上
+  for (const w of [375, 768, 1024, 1440]) {
+    const { ctx, page } = await newPage(browser, w, state)
+    for (const route of AUTHED) {
+      await open(page, route, 300)
+      await openAi(page)
+      if (route === 'transactions') {
+        await page.locator('.ai-drawer textarea').fill('昨天和朋友吃火锅 386')
+        await page.locator('.ai-drawer .actions .el-button--primary').click()
+        await page.locator('.ai-drawer .draft').first().waitFor({ timeout: 8000 }); await page.waitForTimeout(250)
+      }
+      const r = await page.evaluate(FIND_OVERFLOW, w)
+      const bad = [...r.bad]
+      if (w <= 768) {
+        const small = await page.evaluate(SMALL_TARGETS)
+        const text = await page.evaluate(SMALL_TEXT)
+        if (small.length || text.length) quality.push({ name: `${w} 抽屉打开 ${route}`, small, text })
+      }
+      D.push({ route, w, pass: r.scrollWidth <= w + 1 && r.docWidth <= w + 1 && !bad.length, scrollWidth: r.scrollWidth, bad })
+    }
+    page.errors.forEach((e) => logErrors.add(`${w}: ${e}`))
+    await ctx.close()
+  }
+
+  // 桌面抽屉：贴右侧 ~420、主内容让位、切页不销毁、可拖宽、完整页入口、@ 不关抽屉、退出登录清掉草稿
+  {
+    const { ctx, page } = await newPage(browser, 1440, state)
+    const rows = []
+    const row = (name, pass, bad = []) => rows.push({ name: `1440 [AI 抽屉] ${name}`, pass, bad: pass ? [] : bad })
+    await open(page, 'transactions')
+    const mainW = await page.locator('.main').evaluate((e) => e.clientWidth)
+    row('关闭时不占位（没挂载）', (await page.locator('.ai-drawer').count()) === 0)
+    await openAi(page)
+    const dw = await page.locator('.ai-drawer').evaluate((e) => e.getBoundingClientRect().width)
+    const mainOpen = await page.locator('.main').evaluate((e) => e.clientWidth)
+    row('宽 420、主内容让位', dw === 420 && mainOpen <= mainW - 400, [`抽屉 ${dw} 主内容 ${mainW} → ${mainOpen}`])
+    const tip = (await page.locator('.ai-drawer .tip').textContent()).trim()
+    row('桌面文案保留 ⌘', /⌘V/.test(tip) && /⌘\+Enter/.test(tip), [tip])
+    await page.locator('.ai-drawer textarea').fill('昨天和朋友吃火锅 386')
+    await page.locator('.ai-drawer .actions .el-button--primary').click()
+    await page.locator('.ai-drawer .draft').first().waitFor({ timeout: 8000 }); await page.waitForTimeout(250)
+    await page.locator('.pin-btn').first().click(); await page.waitForTimeout(250)
+    row('@ 后抽屉仍开着，出现已引用', (await page.locator('.ai-drawer .pin-tag').count()) === 1)
+    await page.locator('.sidebar .el-menu-item', { hasText: '账户' }).first().click()
+    await page.waitForURL(/accounts/); await page.waitForTimeout(500)
+    const kept = await page.locator('.ai-drawer .draft').count()
+    row('切页抽屉不关、草稿保留', (await page.locator('.ai-drawer').isVisible()) && kept === AI_FIXTURE.items.length, [`草稿 ${kept}`])
+    const box = await page.locator('.resizer').boundingBox()
+    await page.mouse.move(box.x + 2, box.y + 200); await page.mouse.down(); await page.mouse.move(box.x - 120, box.y + 200, { steps: 4 }); await page.mouse.up()
+    await page.waitForTimeout(200)
+    const dragged = await page.locator('.ai-drawer').evaluate((e) => e.getBoundingClientRect().width)
+    row('可拖宽', dragged > 500, [`宽 ${dragged}`])
+    const r = await page.evaluate(FIND_OVERFLOW, 1440)
+    row('拖宽后 0 溢出', r.scrollWidth <= 1441 && !r.bad.length, r.bad)
+    await page.locator('.ai-full').click(); await page.waitForURL(/\/ai$/); await page.waitForTimeout(400)
+    row('在完整页面打开：草稿带过去，抽屉收起', (await page.locator('.page .draft').count()) === kept && !(await page.locator('.ai-drawer').isVisible()))
+    await page.locator('.topbar .user').hover(); await page.waitForTimeout(300)
+    await page.getByRole('menuitem', { name: '退出登录' }).click(); await page.waitForURL(/login/)
+    await page.getByPlaceholder('用户名').fill(USER); await page.getByPlaceholder('密码').fill(PASS)
+    await page.getByRole('button', { name: '登录' }).click(); await page.waitForURL(/dashboard/)
+    await page.goto(`${APP}/dashboard`).catch(() => {})
+    await page.locator('.ai-open-btn').click(); await page.waitForTimeout(350)
+    row('退出登录后草稿和引用清空', (await page.locator('.ai-drawer .draft').count()) === 0 && (await page.locator('.ai-drawer .pin-tag').count()) === 0)
+    B.push(...rows)
+    page.errors.forEach((e) => logErrors.add(`1440 抽屉: ${e}`))
     await ctx.close()
   }
 
@@ -502,6 +642,14 @@ async function audit() {
   }
   for (const r of A.filter((x) => x.bad.length)) console.log(`  ✗ ${r.w} ${r.route}: ${r.bad.join(' ; ')}`)
 
+  console.log('\n## 抽屉打开态 × 路由\n')
+  console.log('| 路由 | 375 | 768 | 1024 | 1440 |')
+  console.log('|---|---|---|---|---|')
+  for (const route of AUTHED) {
+    console.log(`| ${route} | ${[375, 768, 1024, 1440].map((w) => { const x = D.find((d) => d.route === route && d.w === w); return `${x.pass ? 'PASS' : 'FAIL'} ${x.scrollWidth}` }).join(' | ')} |`)
+  }
+  for (const r of D.filter((x) => x.bad.length)) console.log(`  ✗ ${r.w} ${r.route}: ${r.bad.join(' ; ')}`)
+
   console.log('\n## 交互态\n')
   for (const r of B) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}${r.bad.length ? '  ' + r.bad.join(' ; ') : ''}`)
 
@@ -517,8 +665,9 @@ async function audit() {
 
   const failA = A.filter((r) => !r.pass).length
   const failB = B.filter((r) => !r.pass).length
-  console.log(`\n合计 A ${A.length} 项失败 ${failA}；交互 ${B.length} 项失败 ${failB}；触控/字号待修 ${quality.length} 处；控制台错误 ${logErrors.size}`)
-  process.exit(failA || failB || quality.length ? 1 : 0)
+  const failD = D.filter((r) => !r.pass).length
+  console.log(`\n合计 A ${A.length} 项失败 ${failA}；抽屉打开 ${D.length} 项失败 ${failD}；交互 ${B.length} 项失败 ${failB}；触控/字号待修 ${quality.length} 处；控制台错误 ${logErrors.size}`)
+  process.exit(failA || failB || failD || quality.length ? 1 : 0)
 }
 
 async function shots() {
@@ -562,8 +711,7 @@ async function shots() {
       await page.locator('.m-filter-btn').first().click(); await page.waitForTimeout(500)
       await page.screenshot({ path: path.join(dir, 'filter-sheet.png') })
       await closeOverlay(page)
-      await page.locator('.topbar .user').click(); await page.waitForTimeout(300)
-      await page.getByRole('menuitem', { name: /AI 记一笔/ }).click(); await page.waitForTimeout(600)
+      await openAi(page)
       await page.screenshot({ path: path.join(dir, 'ai-drawer.png') })
     }
     await ctx.close()
@@ -603,6 +751,15 @@ async function desktop() {
   await page.screenshot({ path: path.join(out, 'import-preview.png') })
   await openDrafts(page)
   await page.screenshot({ path: path.join(out, 'ai-drafts.png') })
+  // 改动前的版本没有这个入口时跳过，基线和改后都能跑
+  if (await page.locator('.ai-open-btn').count()) {
+    await open(page, 'transactions', 1000)
+    await openAi(page)
+    await page.locator('.ai-drawer textarea').fill('昨天和朋友吃火锅 386')
+    await page.locator('.ai-drawer .actions .el-button--primary').click()
+    await page.locator('.ai-drawer .draft').first().waitFor({ timeout: 8000 }); await page.waitForTimeout(400)
+    await page.screenshot({ path: path.join(out, 'ai-drawer-open.png') })
+  }
   await browser.close()
   console.log(`已截 ${fs.readdirSync(out).length} 张 → ${out}`)
 }

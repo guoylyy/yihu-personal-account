@@ -65,6 +65,7 @@ import { ref, computed, onMounted, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '@/api'
+import { useAiPageContext, onAiCommitted } from '@/composables/useAiAssistant'
 import { money, moneyShort, currentPeriod, periodOptions } from '@/utils/format'
 import { categories, loadMeta } from '@/composables/useMeta'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
@@ -72,6 +73,7 @@ import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 const tab = ref('exec')
 const loading = ref(false)
 const period = ref(currentPeriod())
+useAiPageContext(() => ({ period: period.value }))
 const exec = ref({ rows: [], total: {} })
 const year = ref(dayjs().year())
 const years = [dayjs().year() - 1, dayjs().year(), dayjs().year() + 1]
@@ -104,6 +106,7 @@ async function saveEdit() {
 }
 onMounted(() => { loadExec(); loadEdit() })
 onActivated(loadExec)
+onAiCommitted(loadExec)
 </script>
 
 <style scoped>

@@ -41,8 +41,9 @@
         <el-table-column label="估值" width="160" mobile="full">
           <template #default="{ row }"><span class="muted" style="font-size: 12px">{{ date(row.valuedAt) }} {{ row.valuationNote }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="230" fixed="right">
+        <el-table-column label="操作" width="256" fixed="right">
           <template #default="{ row }">
+            <PinButton type="holding" :id="row.id" :label="row.name" />
             <el-button link type="primary" @click="openTrade(row)">交易/估值</el-button>
             <el-button link @click="openTrades(row)">记录</el-button>
             <el-button link @click="openForm(row)">编辑</el-button>
@@ -123,6 +124,8 @@ import { money, date } from '@/utils/format'
 import { HOLDING_TYPES, MARKETS, TRADE_ACTIONS, labelOf } from '@/constants'
 import { accountOptions, loadMeta } from '@/composables/useMeta'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
+import PinButton from '@/components/PinButton.vue'
+import { onAiCommitted } from '@/composables/useAiAssistant'
 
 const loading = ref(false)
 const list = ref([])
@@ -178,4 +181,5 @@ async function openTrades(row) { Object.assign(trades, { visible: true, row, lis
 
 onMounted(() => { loadMeta(); load() })
 onActivated(load)
+onAiCommitted(load)
 </script>

@@ -3,7 +3,7 @@
     <CrudTable ref="table" :api="api.accounts" title="账户" entity-name="账户" add-text="新增账户"
                subtitle="余额 = 校准日真实余额 + 之后的流水。和 App 里对不上时点「校准」，不用去改流水"
                :columns="columns" :form-fields="formFields" :default-form="{ type: 'BANK', owner: 'ME', status: 'ACTIVE', initialBalance: 0, initialDate: today }"
-               :action-width="200" @loaded="onLoaded">
+               :action-width="224" @loaded="onLoaded">
       <template #toolbar>
         <el-button @click="openTransfer"><el-icon><Switch /></el-icon>&nbsp;转账 / 还信用卡</el-button>
       </template>
@@ -20,6 +20,7 @@
         <span :class="{ 'money-out': stale(row) }">{{ date(row.initialDate) }}</span>
       </template>
       <template #row-actions="{ row }">
+        <PinButton type="account" :id="row.id" :label="row.name" />
         <el-button link type="primary" @click="openCalibrate(row)">校准</el-button>
         <el-button link @click="router.push(`/transactions?account_id=${row.id}`)">流水</el-button>
       </template>
@@ -61,12 +62,15 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '@/api'
 import CrudTable from '@/components/CrudTable.vue'
+import PinButton from '@/components/PinButton.vue'
 import { money, date } from '@/utils/format'
 import { ACCOUNT_TYPES, OWNERS, opts } from '@/constants'
 import { accountOptions, loadMeta } from '@/composables/useMeta'
+import { onAiCommitted } from '@/composables/useAiAssistant'
 
 const router = useRouter()
 const table = ref()
+onAiCommitted(() => table.value?.reload())
 const today = dayjs().format('YYYY-MM-DD')
 const sum = reactive({ cash: 0, debt: 0 })
 const stale = (row) => !row.initialDate || dayjs().diff(dayjs(row.initialDate), 'day') > 35

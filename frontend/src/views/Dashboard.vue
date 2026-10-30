@@ -109,6 +109,7 @@ import { ref, computed, onMounted, onActivated, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import { useAiPageContext, onAiCommitted } from '@/composables/useAiAssistant'
 import { money, moneyShort, date, currentPeriod, periodOptions } from '@/utils/format'
 import { ACCOUNT_TYPES, labelOf } from '@/constants'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
@@ -117,6 +118,7 @@ import { useCharts } from '@/composables/useCharts'
 const router = useRouter()
 const loading = ref(false)
 const period = ref(currentPeriod())
+useAiPageContext(() => ({ period: period.value }))
 const periods = periodOptions(18)
 const data = ref({})
 const exec = ref({ rows: [], total: {} })
@@ -193,6 +195,7 @@ function draw() {
 
 onMounted(load)
 onActivated(load)
+onAiCommitted(load)
 </script>
 
 <style scoped>

@@ -3,7 +3,7 @@ import multer from 'multer'
 import crypto from 'node:crypto'
 import prisma from '../lib/prisma.js'
 import { ok, badRequest, notFound, wrap } from '../lib/response.js'
-import { createTransaction } from '../lib/ledger.js'
+import { createTransaction, updateTransaction } from '../lib/ledger.js'
 import { recalcAccountBalance } from '../lib/balance.js'
 import { classify, learnRule, matchAccount } from '../lib/classify.js'
 import { parseBill } from '../lib/billParser.js'
@@ -61,27 +61,9 @@ router.post('/', wrap(async (req, res) => {
   return ok(res, row)
 }))
 
-const EDITABLE = ['txnDate', 'txnTime', 'direction', 'amount', 'accountId', 'categoryId', 'counterparty', 'description', 'channel', 'isBusiness', 'businessOrg', 'bizStatus', 'remark']
-
 router.put('/:id', wrap(async (req, res) => {
-  const id = BigInt(req.params.id)
-  const before = await prisma.transaction.findFirst({ where: { id, userId: currentUserId(), deletedAt: null } })
-  if (!before) return notFound(res)
-  const data = {}
-  for (const k of EDITABLE) {
-    if (req.body[k] === undefined) continue
-    let v = req.body[k] === '' ? null : req.body[k]
-    if (k === 'txnDate') v = toDate(v)
-    if ((k === 'accountId' || k === 'categoryId') && v != null) v = BigInt(v)
-    if (k === 'amount') v = round2(Math.abs(Number(v)))
-    data[k] = v
-  }
-  if (data.isBusiness === true && !before.bizStatus && !data.bizStatus) data.bizStatus = 'PENDING'
-  if (data.isBusiness === false) { data.bizStatus = null; data.businessOrg = null }
-  const row = await prisma.transaction.update({ where: { id }, data, include })
-  for (const a of new Set([before.accountId, row.accountId].filter(Boolean).map(String))) await recalcAccountBalance(a)
-  if (req.body.learn && row.counterparty && row.categoryId) await learnRule(row.counterparty, row.categoryId, row.isBusiness)
-  await logAudit({ action: 'UPDATE', entity: '流水', entityId: id, summary: `修改流水 ${row.code}`, before, after: row })
+  const row = await updateTransaction(req.params.id, req.body, { include })
+  if (!row) return notFound(res)
   return ok(res, row)
 }))
 

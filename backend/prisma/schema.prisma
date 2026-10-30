@@ -35,6 +35,8 @@ model User {
   budgets          Budget[]
   netWorthSnapshots NetWorthSnapshot[]
   aiEntryLogs      AiEntryLog[]
+  aiDrafts         AiDraft[]
+  aiSubmissions    AiSubmission[]
 }
 
 /// 资金账户：银行卡 / 微信 / 支付宝 / 现金 / 信用卡
@@ -354,6 +356,48 @@ model AiEntryLog {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+/// AI 草稿：每条待入账内容一行，提交状态放在服务端，重复提交靠它返回第一次的结果
+model AiDraft {
+  id          BigInt    @id @default(autoincrement())
+  userId      BigInt
+  type        String    @db.VarChar(30) // aiEntry.js 的 ITEM_TYPES
+  targetId    BigInt?   // update_transaction 要改的流水 id，只认落库时解析出来的
+  payload     Json
+  batchSeq    Int       @default(0) // 同一批里内容相同的第几条：一次多笔里两笔一样的账不算重复
+  logId       BigInt?   // 对应的 AiEntryLog
+  submittedAt DateTime?
+  resultId    String?   @db.VarChar(32) // 入账产生/修改的业务记录 id
+  resultCode  String?   @db.VarChar(120) // 流水编号或摘要
+  duplicateOf BigInt?   // 被判重复时，第一次提交的草稿 id
+  lockedAt    DateTime? // 提交进行中的锁：同一张草稿并发提交时，后到的等前一个出结果
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+/// 提交指纹：sha256(草稿类型 + 用户 id + 键排序 JSON)，唯一索引挡并发重复提交
+/// 同指纹 60 秒内再提交返回第一次的结果；超过 60 秒视为新的一笔，原行被接管复用
+model AiSubmission {
+  id          BigInt   @id @default(autoincrement())
+  fingerprint String   @unique @db.Char(64)
+  userId      BigInt
+  draftId     BigInt
+  type        String   @db.VarChar(30)
+  status      String   @default("PENDING") @db.VarChar(20) // PENDING 处理中 / DONE 成功 / FAILED 失败（可重试）
+  resultId    String?  @db.VarChar(32)
+  resultCode  String?  @db.VarChar(120)
+  claimedAt   DateTime @default(now()) // 本轮提交开始时间，60 秒窗口从这里算
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
 }
