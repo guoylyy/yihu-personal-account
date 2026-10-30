@@ -36,7 +36,7 @@
           <span class="title">{{ route.meta.title }}</span>
         </div>
         <div class="right">
-          <el-button type="primary" class="ai-open-btn" @click="toggleDrawer"><el-icon><MagicStick /></el-icon>&nbsp;AI 记账</el-button>
+          <el-button v-if="route.path !== '/ai'" type="primary" class="ai-open-btn" @click="toggleDrawer"><el-icon><MagicStick /></el-icon>&nbsp;AI 记账</el-button>
           <el-dropdown :trigger="isMobile ? 'click' : 'hover'" @command="onCommand">
             <span class="user">
               <el-avatar v-if="isMobile" :size="32" style="background: var(--text)">{{ user?.name?.[0] || '我' }}</el-avatar>

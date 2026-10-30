@@ -36,7 +36,7 @@
 - **借贷往来**：我借出（应收）/ 我借入（负债，含房贷）；登记还款自动拆本金（转移）和利息（收支）；「待核实」不计入净资产
 - **预算**：按年按科目编制；月度与年累计执行率
 - **月结与净资产**：月结检查清单、净资产快照、生成 Markdown 月结摘要（可归档到 Obsidian 等笔记）
-- **问问 AI**：基于资产负债表和近 6 个月收支的只读问答
+- **问 AI**：和记账在同一条对话里，直接问就行，基于资产负债表和近 6 个月收支的只读问答
 
 ---
 
@@ -175,7 +175,8 @@ backend/
   src/lib/billParser.js     微信/支付宝/银行账单解析
   src/lib/classify.js       规则分类与学习
 frontend/src/
-  components/AiEntry.vue    AI 录入组件（/ai 页和抽屉共用，状态在 composables/useAiAssistant.js）
+  components/AiEntry.vue    AI 助手对话（/ai 页和抽屉共用，状态在 composables/useAiAssistant.js）
+  components/AiDraftCard.vue 对话里的草稿卡
   components/AiDrawer.vue   全局抽屉，挂在 Layout 上，不随路由销毁
   views/                    12 个页面
 ```

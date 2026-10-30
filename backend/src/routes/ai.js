@@ -95,7 +95,7 @@ router.post('/ask', wrap(async (req, res) => {
     今年预算: budgets.map((b) => `${b.category.code}${b.category.name}: 月 ${b.monthlyAmount}`)
   }
   const r = await llmJSON({
-    system: '你是用户的私人财务顾问，只根据给出的数据回答，数字要准确，不确定就说不确定。不提供具体证券买卖建议。用中文，简洁，重点加粗。输出 JSON：{"answer":"markdown 文本"}',
+    system: '你是用户的私人财务顾问，只根据给出的数据回答，数字要准确，不确定就说不确定。不提供具体证券买卖建议。用中文，一两句话直接给结论，不要表格，不要复述问题，只把关键数字加粗。问题里可能带「之前的对话」和用户引用的记录，用来理解追问。输出 JSON：{"answer":"markdown 文本"}',
     prompt: `数据：${JSON.stringify(context)}\n\n问题：${q}`
   })
   return ok(res, { answer: r.data.answer || '', ms: r.ms })
