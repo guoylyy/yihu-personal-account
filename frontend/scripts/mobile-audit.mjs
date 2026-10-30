@@ -1,7 +1,7 @@
 // 移动端验收脚本（playwright）。参照 yihu-finance/frontend/scripts/mobile-audit.mjs，路由和交互态换成本系统
 //   node scripts/mobile-audit.mjs seed                      往 E2E 库灌演示数据（账本里有非 E2E 数据时拒绝执行）
 //   node scripts/mobile-audit.mjs audit                     375/768/1440 逐路由断言 + 抽屉打开态 + 交互态 + 触控/字号 + 1024 图标栏
-//   node scripts/mobile-audit.mjs shots [--out screenshots/mobile] [--only ai]   --only ai 只截 AI 助手四态
+//   node scripts/mobile-audit.mjs shots [--out screenshots/mobile] [--only ai|version]   --only ai 只截 AI 助手四态，--only version 只截版本号
 //   node scripts/mobile-audit.mjs desktop --out <dir>       1440 全路由 + 桌面弹窗整页截图（回归基线/改后各跑一次）
 //   node scripts/mobile-audit.mjs compare <基线目录> <改后目录>   逐像素对比
 // 环境变量：APP_URL（默认 http://localhost:5193）、PF_USER / PF_PASS（默认 admin / admin123）
@@ -25,6 +25,8 @@ const PUBLIC = ['login', 'sso-done']
 const ROUTES = [...AUTHED, ...PUBLIC]
 // 这些页面有数据表：手机端必须是卡片、桌面必须是 el-table，防止「没数据所以没溢出」的假通过
 const TABLE_ROUTES = ['dashboard', 'accounts', 'transactions', 'import', 'holdings', 'assets', 'loans', 'budget', 'close', 'categories']
+// 版本号断言的基准：读清单，发版改号不用动脚本
+const MANIFEST_VERSION = JSON.parse(fs.readFileSync(new URL('../../yh-app.json', import.meta.url), 'utf8')).version
 
 // ---------- 演示数据 ----------
 async function api(token, method, url, body) {
@@ -725,6 +727,49 @@ async function audit() {
     await ctx.close()
   }
 
+  // 版本号：桌面在顶栏，手机收进头像下拉；接口没给版本时什么都不显示
+  {
+    const version = `v${MANIFEST_VERSION}`
+    const row = (name, pass, bad = []) => B.push({ name: `[版本号] ${name}`, pass, bad: pass ? [] : bad })
+    const topbar = (page) => page.locator('.topbar').innerText()
+    const { ctx: dCtx, page: desk } = await newPage(browser, 1440, state)
+    await open(desk, 'dashboard')
+    const dText = await topbar(desk)
+    row(`1440 顶栏含 ${version}`, /\bv\d/.test(dText) && dText.includes(version), [dText])
+    const px = await desk.locator('.app-version').evaluate((e) => getComputedStyle(e).fontSize)
+    row('1440 字号 12px', px === '12px', [px])
+    const order = await desk.evaluate(() => document.querySelector('.app-version').getBoundingClientRect().right <= document.querySelector('.topbar .user').getBoundingClientRect().left)
+    row('1440 在头像左侧', order)
+    await dCtx.close()
+
+    for (const w of [375, 768]) {
+      const { ctx, page } = await newPage(browser, w, state)
+      await open(page, 'dashboard')
+      const text = await topbar(page)
+      row(`${w} 顶栏不含版本`, !/\bv\d/.test(text) && (await page.locator('.topbar .app-version').count()) === 0, [text])
+      await page.locator('.topbar .user').click(); await page.waitForTimeout(350)
+      const items = (await page.locator('.el-dropdown-menu:visible .el-dropdown-menu__item').allInnerTexts()).map((t) => t.trim())
+      row(`${w} 头像下拉第一行是「版本 ${version}」`, items[0] === `版本 ${version}`, [items.join(' / ')])
+      const r = await page.evaluate(FIND_OVERFLOW, w)
+      row(`${w} 下拉打开 0 溢出`, r.scrollWidth <= w + 1 && !r.bad.length, r.bad)
+      await ctx.close()
+    }
+
+    for (const [name, reply] of [['没有 version 字段', { json: { code: 0, message: 'ok', data: { ts: 1 } } }], ['接口报错', { status: 500, json: { code: 500, message: 'E2E 模拟失败' } }]]) {
+      for (const w of [375, 1440]) {
+        const { ctx, page } = await newPage(browser, w, state)
+        await page.route('**/api/health', (r) => r.fulfill(reply))
+        await open(page, 'dashboard')
+        const text = await topbar(page)
+        await page.locator('.topbar .user').click(); await page.waitForTimeout(350)
+        const menu = await page.locator('.el-dropdown-menu:visible').innerText()
+        const leaked = (await page.locator('.app-version, .m-version-line').count()) || /\bv(undefined|null)?(\s|$)|版本/.test(`${text}\n${menu}`)
+        row(`${w} ${name}：不渲染占位`, !leaked, [text, menu])
+        await ctx.close()
+      }
+    }
+  }
+
   // 平板图标栏（1024）：只测导航形态，表格保持桌面
   {
     const { ctx, page } = await newPage(browser, 1024, state)
@@ -818,6 +863,21 @@ async function shots() {
   const out = opt('out', 'screenshots/mobile')
   const browser = await chromium.launch()
   const state = await login(browser)
+  if (opt('only') === 'version') {
+    fs.mkdirSync(out, { recursive: true })
+    const { ctx: dCtx, page: desk } = await newPage(browser, 1440, state)
+    await open(desk, 'dashboard')
+    await desk.screenshot({ path: path.join(out, 'version-1440-topbar.png'), clip: { x: 0, y: 0, width: 1440, height: 120 } })
+    await dCtx.close()
+    const { ctx, page } = await newPage(browser, 375, state)
+    await open(page, 'dashboard')
+    await page.screenshot({ path: path.join(out, 'version-375-topbar.png'), clip: { x: 0, y: 0, width: 375, height: 120 } })
+    await page.locator('.topbar .user').click(); await page.waitForTimeout(400)
+    await page.screenshot({ path: path.join(out, 'version-375-dropdown.png'), clip: { x: 0, y: 0, width: 375, height: 260 } })
+    await ctx.close()
+    await browser.close()
+    return console.log(path.join(out, 'version-*.png'))
+  }
   const onlyAi = opt('only') === 'ai'
   for (const w of opt('widths', '375,768,1440').split(',').map(Number)) {
     const dir = path.join(out, String(w))

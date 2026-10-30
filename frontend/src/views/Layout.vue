@@ -37,6 +37,7 @@
         </div>
         <div class="right">
           <el-button v-if="route.path !== '/ai'" type="primary" class="ai-open-btn" @click="toggleDrawer"><el-icon><MagicStick /></el-icon>&nbsp;AI 记账</el-button>
+          <span v-if="appVersion && !isMobile" class="app-version">v{{ appVersion }}</span>
           <el-dropdown :trigger="isMobile ? 'click' : 'hover'" @command="onCommand">
             <span class="user">
               <el-avatar v-if="isMobile" :size="32" style="background: var(--text)">{{ user?.name?.[0] || '我' }}</el-avatar>
@@ -49,6 +50,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <template v-if="isMobile">
+                  <el-dropdown-item v-if="appVersion" disabled class="m-user-line m-version-line">版本 v{{ appVersion }}</el-dropdown-item>
                   <el-dropdown-item disabled class="m-user-line">{{ user?.name }}</el-dropdown-item>
                 </template>
                 <el-dropdown-item command="settings">系统设置</el-dropdown-item>
@@ -75,6 +77,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getUser, clearAuth } from '@/api'
 import { getPlatformHome } from '@/api/base'
 import { loadMeta } from '@/composables/useMeta'
+import { appVersion, loadAppVersion } from '@/composables/useAppVersion'
 import AiDrawer from '@/components/AiDrawer.vue'
 import NavMenu from './NavMenu.vue'
 import { useViewport } from '@/composables/useViewport'
@@ -86,7 +89,10 @@ const user = ref(getUser())
 const navOpen = ref(false)
 const { isMobile, isTablet } = useViewport()
 
-onMounted(() => loadMeta().catch(() => {}))
+onMounted(() => {
+  loadMeta().catch(() => {})
+  loadAppVersion().catch(() => {})
+})
 
 function onCommand(cmd) {
   if (cmd === 'settings') return router.push('/settings')
@@ -112,6 +118,7 @@ function onCommand(cmd) {
 .title { font-size: 15px; font-weight: 600; }
 .right { display: flex; align-items: center; gap: 16px; }
 .user { display: flex; align-items: center; gap: 8px; cursor: pointer; outline: none; font-size: 14px; }
+.app-version { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .main { background: var(--bg); padding: 18px 20px; overflow-y: auto; }
 
 /* 平板：图标栏 */

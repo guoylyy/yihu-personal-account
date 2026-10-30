@@ -56,6 +56,7 @@ const B = `${BASE}/api/pf`
 const AI_TIMEOUT = 180000
 
 export const api = {
+  health: () => get(`${BASE}/api/health`),
   auth: {
     login: (b) => post(`${BASE}/api/auth/login`, b),
     mode: () => get(`${BASE}/api/auth/mode`),

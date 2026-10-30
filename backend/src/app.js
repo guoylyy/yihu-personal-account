@@ -20,6 +20,7 @@ import { auth } from './lib/auth.js'
 import { withTenant } from './lib/tenant.js'
 import { mountPlatform, serveFrontend, callSelf } from './lib/platform.js'
 import { resolveUser, signFor } from './lib/platform-users.js'
+import { VERSION } from './lib/version.js'
 
 BigInt.prototype.toJSON = function () { return this.toString() }
 
@@ -28,7 +29,7 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '20mb' }))
 
-app.get('/api/health', (req, res) => res.json({ code: 0, message: 'ok', data: { ts: Date.now() } }))
+app.get('/api/health', (req, res) => res.json({ code: 0, message: 'ok', data: { ts: Date.now(), version: VERSION } }))
 app.use('/api/auth', authRouter)
 
 // 鉴权通过后进入该用户的租户上下文，下游所有读写隐式归属 req.user.id
