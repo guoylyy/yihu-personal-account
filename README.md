@@ -49,12 +49,13 @@
 
 ## AI 录入怎么工作
 
-`backend/.env` 的 `AI_PROVIDER`：
+`backend/.env` 的 `AI_PROVIDER`。不配时按这个顺序选：平台应用凭证（`YH_CLIENT_ID` + `YH_CLIENT_SECRET`）> `ANTHROPIC_API_KEY` > 本机 `claude` 命令行 > `off`。
 
 | 值 | 说明 |
 |---|---|
-| `claude-cli`（默认） | 调本机已登录的 `claude` 命令行，无需 API Key。文字约 5~20 秒，截图约 10 秒。`AI_CLI_MODEL=haiku` 更快，`sonnet` 更准 |
-| `anthropic` | 用 `ANTHROPIC_API_KEY` 直连 Messages API（`AI_MODEL` 默认 `claude-opus-5`），部署到服务器用这个 |
+| `platform` | 部署到以虎 One 时默认走这个：用应用凭证调平台的 `{YH_API_URL}/api/open/llm/chat/completions`，文字和截图都支持。`AI_MODEL` 可指定模型，不配用平台默认。调不通时降级到规则解析并提示 |
+| `claude-cli`（本机默认） | 调本机已登录的 `claude` 命令行，无需 API Key。文字约 5~20 秒，截图约 10 秒。`AI_CLI_MODEL=haiku` 更快，`sonnet` 更准 |
+| `anthropic` | 用 `ANTHROPIC_API_KEY` 直连 Messages API（`AI_MODEL` 默认 `claude-opus-5`），部署到非以虎 One 的服务器时用这个 |
 | `off` | 不调模型，只用规则解析简单句子和「把这笔改成餐饮」 |
 | `stub` | 不发任何外部请求，按 `lib/llmStub.js` 的规则返回确定结果；`npm test` 和本地联调用 |
 
@@ -109,7 +110,7 @@ cd ../frontend && npm install && npm run dev   # http://localhost:5193
 
 本系统可以作为应用插到 [以虎 One](https://github.com/guoylyy/yihu-one) 平台（自托管的小团队工作台，统一登录 + 应用市场 + AI 助手）上：用平台的统一登录，挂在 `<平台地址>/apps/personal-account/` 下，AI 助手可以直接查询净资产、预算和月结。本地开发不受影响——不配平台注入的 `YH_*` 环境变量时，一切照旧（账号密码登录、根路径访问）。
 
-**版本**：当前 `1.2.0`（`VERSION` 文件与 `yh-app.json` 的 `version` 字段保持一致，遵循语义化版本；每次发版同步更新，平台据此展示与升级比对）。
+**版本**：当前 `1.2.2`（`VERSION` 文件与 `yh-app.json` 的 `version` 字段保持一致，遵循语义化版本；每次发版同步更新，平台据此展示与升级比对）。
 
 **安装**：平台控制台「管理 → 应用 → 从 Git 安装应用」填本仓库地址 `https://github.com/guoylyy/yihu-personal-account` 和 code `personal-account`；或在平台服务器上：
 
@@ -170,7 +171,7 @@ backend/
   src/lib/aiEntry.js        AI 录入：上下文 → 解析 → 对 id → 入账；规则兜底
   src/lib/aiContext.js      页面上下文与 @ 引用：重新查库、解析优先级
   src/lib/aiDrafts.js       草稿落库与提交幂等（草稿锁 + 指纹唯一索引）
-  src/lib/llm.js            模型调用（claude-cli / anthropic / off / stub）
+  src/lib/llm.js            模型调用（platform / claude-cli / anthropic / off / stub）
   test/                     node --test，进程内起 app + stub 模型，自建数据、跑完硬删除
   src/lib/billParser.js     微信/支付宝/银行账单解析
   src/lib/classify.js       规则分类与学习

@@ -94,11 +94,16 @@ router.post('/ask', wrap(async (req, res) => {
     近6个月收支: stats.map((s) => ({ 月份: s.period, 收入: s.income, 个人支出: s.expense, 公司款: s.business, 科目: s.byCategory.slice(0, 12).map((c) => `${c.code}${c.name}:${c.amount}`) })),
     今年预算: budgets.map((b) => `${b.category.code}${b.category.name}: 月 ${b.monthlyAmount}`)
   }
-  const r = await llmJSON({
-    system: '你是用户的私人财务顾问，只根据给出的数据回答，数字要准确，不确定就说不确定。不提供具体证券买卖建议。用中文，一两句话直接给结论，不要表格，不要复述问题，只把关键数字加粗。问题里可能带「之前的对话」和用户引用的记录，用来理解追问。输出 JSON：{"answer":"markdown 文本"}',
-    prompt: `数据：${JSON.stringify(context)}\n\n问题：${q}`
-  })
-  return ok(res, { answer: r.data.answer || '', ms: r.ms })
+  try {
+    const r = await llmJSON({
+      system: '你是用户的私人财务顾问，只根据给出的数据回答，数字要准确，不确定就说不确定。不提供具体证券买卖建议。用中文，一两句话直接给结论，不要表格，不要复述问题，只把关键数字加粗。问题里可能带「之前的对话」和用户引用的记录，用来理解追问。输出 JSON：{"answer":"markdown 文本"}',
+      prompt: `数据：${JSON.stringify(context)}\n\n问题：${q}`
+    })
+    return ok(res, { answer: r.data.answer || '', ms: r.ms })
+  } catch (e) {
+    if (!aiStatus().enabled) throw e // 没开 AI 不算故障，前端有自己的提示
+    return ok(res, { answer: `AI 暂时不可用（${e.message}），问答稍后再试；记账还能用规则解析。`, error: e.message })
+  }
 }))
 
 export default router

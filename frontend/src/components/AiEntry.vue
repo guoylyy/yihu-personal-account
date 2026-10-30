@@ -175,7 +175,7 @@ async function clearChat() {
 
 function replyOf(r, drafts) {
   if (r.question) return { reply: r.question, asking: true }
-  const prefix = r.error ? 'AI 暂时不可用，这是按规则识别的，' : ''
+  const prefix = r.notice ? `${r.notice}。` : ''
   if (drafts.length > 1) return { reply: `${prefix}拆成 ${drafts.length} 笔，${drafts.some((d) => lackOf(d).length) ? '标红的补一下再入账' : '核对后入账'}。` }
   // 规则兜底没有模型帮忙合并回答，反问了也接不住，缺的就让用户在卡片上改
   const ask = r.provider?.startsWith('rule') ? null : LACK_ASK[lackOf(drafts[0])[0]]
@@ -196,6 +196,7 @@ async function runParse(said, imgs, sid) {
   if (sid !== session.value) return
   const drafts = r.items.map((i) => ({ ...i, _k: nextId(), learn: false }))
   if (!drafts.length && !r.question) {
+    if (r.notice && imgs.length) return addMessage({ role: 'assistant', warn: true, content: r.notice })
     if (!said || imgs.length) return addMessage({ role: 'assistant', content: '没看出可以入账的内容，换张清楚点的试试。' })
     return runAsk(said, sid)
   }
@@ -215,7 +216,7 @@ async function runAsk(said, sid) {
   try {
     const r = await api.ai.ask(question)
     if (sid !== session.value) return
-    addMessage({ role: 'assistant', content: r.answer, html: md.parse(r.answer || '') })
+    addMessage({ role: 'assistant', warn: !!r.error, content: r.answer, html: md.parse(r.answer || '') })
   } catch (e) {
     if (sid !== session.value) return
     addMessage({ role: 'assistant', warn: true, content: status.value?.enabled === false ? '现在没开 AI，只能记账，问答用不了。' : e.message })

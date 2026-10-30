@@ -185,7 +185,7 @@ test('上下文 JSON 坏了：报错，不当作没传', async () => {
   assert.equal(r.code, 9002)
 })
 
-test('AI 关闭（平台默认）时规则也能处理「这笔改成餐饮」，优先级一致', async () => {
+test('AI 关闭时规则也能处理「这笔改成餐饮」，优先级一致', async () => {
   process.env.AI_PROVIDER = 'off'
   const a = await t.parse(me.token, '把这笔改成餐饮', { pinned: [pinTxn(txn2)] })
   assert.equal(a.data.provider, 'rule')

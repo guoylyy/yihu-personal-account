@@ -15,8 +15,9 @@
           </el-descriptions>
           <div class="muted help">
             在 <code>backend/.env</code> 里切换：<br />
-            <code>AI_PROVIDER=claude-cli</code>（默认）复用本机已登录的 claude 命令行，不需要 Key；<code>AI_CLI_MODEL</code> 可设 haiku（快）或 sonnet（准）<br />
-            <code>AI_PROVIDER=anthropic</code> 用 <code>ANTHROPIC_API_KEY</code> 直连，部署到服务器时用这个<br />
+            <code>AI_PROVIDER=platform</code> 以虎 One 平台大模型，部署到平台时默认走这个<br />
+            <code>AI_PROVIDER=claude-cli</code>（本机默认）复用本机已登录的 claude 命令行，不需要 Key；<code>AI_CLI_MODEL</code> 可设 haiku（快）或 sonnet（准）<br />
+            <code>AI_PROVIDER=anthropic</code> 用 <code>ANTHROPIC_API_KEY</code> 直连，部署到其他服务器时用这个<br />
             <code>AI_PROVIDER=off</code> 关闭 AI，只用规则解析「今天午饭 45 微信」这类简单句子
           </div>
         </div>

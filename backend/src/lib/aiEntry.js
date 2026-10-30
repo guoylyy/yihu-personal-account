@@ -241,6 +241,7 @@ export async function parseEntry({ text = '', images = [], refs = null }) {
   let question = null
   let provider = 'rule'
   let error = null
+  let notice = null
   if (status.enabled && (text.trim() || images.length)) {
     try {
       const r = await llmJSON({
@@ -253,7 +254,10 @@ export async function parseEntry({ text = '', images = [], refs = null }) {
       provider = r.provider
     } catch (e) {
       error = e.message
+      notice = e.noVision ? e.message : text.trim() ? 'AI 暂时不可用，已用规则解析' : `AI 暂时不可用（${e.message}），截图没有识别`
     }
+  } else if (images.length) {
+    notice = 'AI 没开，看不了截图，请改用文字描述'
   }
   if (!items.length && !question && text.trim()) {
     items = await ruleParse(text, ctx)
@@ -263,9 +267,9 @@ export async function parseEntry({ text = '', images = [], refs = null }) {
   question = question || applied.question
   const resolved = await resolveItems(applied.items, ctx)
   const log = await prisma.aiEntryLog.create({
-    data: { userId: resolveUid(), input: text.slice(0, 60000), hasImage: images.length > 0, provider, output: resolved, error, ms: Date.now() - t0 }
+    data: { userId: resolveUid(), input: text.slice(0, 60000), hasImage: images.length > 0, provider: provider.slice(0, 30), output: resolved, error, ms: Date.now() - t0 }
   })
-  return { logId: String(log.id), provider, error, ms: Date.now() - t0, items: resolved, question }
+  return { logId: String(log.id), provider, error, notice, ms: Date.now() - t0, items: resolved, question }
 }
 
 // ─────────── 对外：确认入账 ───────────
