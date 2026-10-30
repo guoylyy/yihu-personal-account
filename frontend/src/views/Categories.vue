@@ -8,14 +8,14 @@
     <div class="page" style="padding-top: 0">
       <div class="section-title">学到的规则 <span class="muted" style="font-size: 12px; font-weight: 400">（你改过分类、勾过「记住」的对方；优先级高于关键字和 AI）</span></div>
       <div class="table-card">
-        <el-table :data="rules" size="small">
+        <ResponsiveTable :data="rules" size="small">
           <el-table-column prop="pattern" label="对方包含" />
           <el-table-column label="归到"><template #default="{ row }">{{ row.category.code }} {{ row.category.name }}</template></el-table-column>
           <el-table-column label="公司款" width="80"><template #default="{ row }"><el-tag v-if="row.isBusiness" size="small" type="warning">是</el-tag></template></el-table-column>
           <el-table-column prop="hits" label="命中/更新" width="90" />
           <el-table-column prop="source" label="来源" width="90" />
           <el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="danger" @click="removeRule(row)">删除</el-button></template></el-table-column>
-        </el-table>
+        </ResponsiveTable>
       </div>
     </div>
   </div>
@@ -25,6 +25,7 @@
 import { ref, onMounted, onActivated } from 'vue'
 import api from '@/api'
 import CrudTable from '@/components/CrudTable.vue'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 import { CATEGORY_KINDS, opts } from '@/constants'
 import { loadMeta } from '@/composables/useMeta'
 
@@ -34,8 +35,8 @@ const columns = [
   { prop: 'name', label: '科目', width: 120 },
   { prop: 'kind', label: '类别', type: 'tag', tagList: CATEGORY_KINDS, width: 130 },
   { prop: 'groupName', label: '分组', width: 70 },
-  { prop: 'keywords', label: '关键字', minWidth: 260, ellipsis: true },
-  { prop: 'remark', label: '说明', minWidth: 160, ellipsis: true }
+  { prop: 'keywords', label: '关键字', minWidth: 260, ellipsis: true, mobile: 'full' },
+  { prop: 'remark', label: '说明', minWidth: 160, ellipsis: true, mobile: 'full' }
 ]
 const formFields = [
   { prop: 'code', label: '代码', required: true },

@@ -52,4 +52,8 @@ onMounted(async () => { ai.value = await api.ai.status() })
 .pad { padding: 14px; }
 .help { font-size: 12px; line-height: 2; margin-top: 12px; }
 code { background: #f2f0eb; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+@media (max-width: 768px) {
+  .help { font-size: 14px; line-height: 1.8; }
+  code { font-size: 14px; word-break: break-all; }
+}
 </style>

@@ -78,18 +78,18 @@
           <el-button link type="primary" style="margin-left: auto" @click="router.push('/accounts')">管理</el-button>
         </div>
         <div class="table-card">
-          <el-table :data="data.accounts || []" size="small">
-            <el-table-column prop="name" label="账户" />
+          <ResponsiveTable :data="data.accounts || []" size="small">
+            <el-table-column prop="name" label="账户" mobile="title" />
             <el-table-column label="类型" width="100">
               <template #default="{ row }">{{ labelOf(ACCOUNT_TYPES, row.type) }}</template>
             </el-table-column>
-            <el-table-column label="余额" align="right">
+            <el-table-column label="余额" align="right" mobile="amount">
               <template #default="{ row }"><span class="money" :class="{ 'money-out': Number(row.balance) < 0 }">{{ money(row.balance) }}</span></template>
             </el-table-column>
             <el-table-column label="校准于" width="100">
               <template #default="{ row }"><span class="muted">{{ date(row.initialDate) }}</span></template>
             </el-table-column>
-          </el-table>
+          </ResponsiveTable>
         </div>
       </el-col>
     </el-row>
@@ -105,13 +105,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onActivated, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onActivated, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { money, moneyShort, date, currentPeriod, periodOptions } from '@/utils/format'
 import { ACCOUNT_TYPES, labelOf } from '@/constants'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
+import { useCharts } from '@/composables/useCharts'
 
 const router = useRouter()
 const loading = ref(false)
@@ -120,7 +121,7 @@ const periods = periodOptions(18)
 const data = ref({})
 const exec = ref({ rows: [], total: {} })
 const pieRef = ref(), trendRef = ref(), nwRef = ref()
-const charts = []
+const { render } = useCharts()
 const today = new Date().toLocaleDateString('zh-CN')
 
 const s = computed(() => data.value.sheet || {})
@@ -149,16 +150,9 @@ async function load() {
   }
 }
 
-function chart(el) {
-  if (!el) return null
-  let c = echarts.getInstanceByDom(el)
-  if (!c) { c = echarts.init(el); charts.push(c) }
-  return c
-}
-
 function draw() {
   const sh = s.value
-  chart(pieRef.value)?.setOption({
+  render(pieRef.value, {
     color: INK,
     tooltip: { trigger: 'item', valueFormatter: (v) => '¥' + money(v) },
     legend: { bottom: 0, icon: 'circle', itemWidth: 8, textStyle: { color: '#5c574f' } },
@@ -171,7 +165,7 @@ function draw() {
     }]
   })
   const t = data.value.trend || []
-  chart(trendRef.value)?.setOption({
+  render(trendRef.value, {
     color: ['#2f6b55', '#1c1917', '#d6d2ca'],
     tooltip: { trigger: 'axis', valueFormatter: (v) => '¥' + money(v) },
     legend: { top: 0, right: 0, textStyle: { color: '#5c574f' } },
@@ -186,7 +180,7 @@ function draw() {
   })
   const snaps = data.value.snapshots || []
   if (snaps.length >= 2) {
-    chart(nwRef.value)?.setOption({
+    render(nwRef.value, {
       color: ['#2f6b55'],
       tooltip: { trigger: 'axis', valueFormatter: (v) => '¥' + money(v) },
       grid: { left: 60, right: 10, top: 16, bottom: 24 },
@@ -197,10 +191,8 @@ function draw() {
   }
 }
 
-const onResize = () => charts.forEach((c) => c.resize())
-onMounted(() => { load(); window.addEventListener('resize', onResize) })
+onMounted(load)
 onActivated(load)
-onBeforeUnmount(() => { window.removeEventListener('resize', onResize); charts.forEach((c) => c.dispose()) })
 </script>
 
 <style scoped>
@@ -219,4 +211,14 @@ onBeforeUnmount(() => { window.removeEventListener('resize', onResize); charts.f
 .bname { width: 108px; font-size: 13px; flex-shrink: 0; }
 .bnum { width: 170px; text-align: right; font-size: 13px; flex-shrink: 0; }
 .section-title { display: flex; }
+@media (max-width: 768px) {
+  .chart { height: 240px; }
+  .alert { min-height: 44px; font-size: 14px; }
+  /* 预算行：名称 + 金额一行，进度条占满下一行 */
+  .brow { flex-wrap: wrap; gap: 4px 12px; padding: 10px 0; }
+  .bname { width: auto; flex: 1; min-width: 0; font-size: 14px; }
+  .bnum { width: auto; font-size: 14px; }
+  .brow :deep(.el-progress) { order: 3; flex-basis: 100% !important; }
+  .empty { font-size: 14px; height: auto; min-height: 80px; text-align: center; }
+}
 </style>

@@ -20,9 +20,9 @@
     </div>
 
     <div class="table-card">
-      <el-table :data="list" v-loading="loading" size="small">
+      <ResponsiveTable :data="list" v-loading="loading" size="small">
         <el-table-column label="类型" width="72"><template #default="{ row }">{{ labelOf(HOLDING_TYPES, row.type) }}</template></el-table-column>
-        <el-table-column label="名称" min-width="150">
+        <el-table-column label="名称" min-width="150" mobile="title">
           <template #default="{ row }">
             <b>{{ row.name }}</b> <span class="muted">{{ row.code }}</span>
             <div class="muted" style="font-size: 12px">{{ row.platform }}{{ row.ratio ? ` · 持股 ${Number(row.ratio)}%` : '' }}</div>
@@ -31,14 +31,14 @@
         <el-table-column label="数量" align="right" width="100"><template #default="{ row }">{{ Number(row.quantity) ? Number(row.quantity) : '—' }}</template></el-table-column>
         <el-table-column label="现价" align="right" width="90"><template #default="{ row }">{{ row.price != null ? Number(row.price) : '—' }}</template></el-table-column>
         <el-table-column label="成本" align="right" width="120"><template #default="{ row }"><span class="money">{{ money(row.costAmount) }}</span></template></el-table-column>
-        <el-table-column label="市值" align="right" width="130"><template #default="{ row }"><span class="money"><b>{{ money(row.mv) }}</b></span></template></el-table-column>
+        <el-table-column label="市值" align="right" width="130" mobile="amount"><template #default="{ row }"><span class="money"><b>{{ money(row.mv) }}</b></span></template></el-table-column>
         <el-table-column label="浮盈" align="right" width="140">
           <template #default="{ row }">
             <span v-if="row.pnl != null" class="money" :class="row.pnl >= 0 ? 'money-in' : 'money-out'">{{ money(row.pnl, true) }} <small>{{ row.pnlRate }}%</small></span>
           </template>
         </el-table-column>
-        <el-table-column label="已实现" align="right" width="100"><template #default="{ row }"><span class="money">{{ Number(row.realizedPnl) ? money(row.realizedPnl) : '' }}</span></template></el-table-column>
-        <el-table-column label="估值" width="160">
+        <el-table-column label="已实现" align="right" width="100"><template #default="{ row }"><span v-if="Number(row.realizedPnl)" class="money">{{ money(row.realizedPnl) }}</span></template></el-table-column>
+        <el-table-column label="估值" width="160" mobile="full">
           <template #default="{ row }"><span class="muted" style="font-size: 12px">{{ date(row.valuedAt) }} {{ row.valuationNote }}</span></template>
         </el-table-column>
         <el-table-column label="操作" width="230" fixed="right">
@@ -49,7 +49,7 @@
             <el-button link type="danger" @click="remove(row)">删</el-button>
           </template>
         </el-table-column>
-      </el-table>
+      </ResponsiveTable>
     </div>
 
     <el-dialog v-model="form.visible" :title="form.id ? '编辑持仓' : '新增持仓'" width="540px">
@@ -62,16 +62,16 @@
         </el-form-item>
         <el-form-item label="平台"><el-input v-model="form.platform" placeholder="券商 / 且慢 / 银行" /></el-form-item>
         <template v-if="!form.id">
-          <el-form-item v-if="['STOCK', 'FUND'].includes(form.type)" label="持有数量"><el-input-number v-model="form.quantity" :precision="4" style="width: 100%" /></el-form-item>
-          <el-form-item v-if="['STOCK', 'FUND'].includes(form.type)" label="现价"><el-input-number v-model="form.price" :precision="4" style="width: 100%" /></el-form-item>
-          <el-form-item label="成本"><el-input-number v-model="form.costAmount" :precision="2" style="width: 100%" /></el-form-item>
+          <el-form-item v-if="['STOCK', 'FUND'].includes(form.type)" label="持有数量"><el-input-number v-model="form.quantity" inputmode="decimal" :precision="4" style="width: 100%" /></el-form-item>
+          <el-form-item v-if="['STOCK', 'FUND'].includes(form.type)" label="现价"><el-input-number v-model="form.price" inputmode="decimal" :precision="4" style="width: 100%" /></el-form-item>
+          <el-form-item label="成本"><el-input-number v-model="form.costAmount" inputmode="decimal" :precision="2" style="width: 100%" /></el-form-item>
         </template>
-        <el-form-item label="当前市值"><el-input-number v-model="form.marketValue" :precision="2" style="width: 100%" /><div class="muted" style="font-size: 12px">股票基金有数量和现价时自动算，可留空</div></el-form-item>
-        <el-form-item v-if="form.type === 'EQUITY'" label="持股比例%"><el-input-number v-model="form.ratio" :precision="2" style="width: 100%" /></el-form-item>
+        <el-form-item label="当前市值"><el-input-number v-model="form.marketValue" inputmode="decimal" :precision="2" style="width: 100%" /><div class="muted" style="font-size: 12px">股票基金有数量和现价时自动算，可留空</div></el-form-item>
+        <el-form-item v-if="form.type === 'EQUITY'" label="持股比例%"><el-input-number v-model="form.ratio" inputmode="decimal" :precision="2" style="width: 100%" /></el-form-item>
         <el-form-item label="估值口径"><el-input v-model="form.valuationNote" /></el-form-item>
         <el-form-item v-if="['DEPOSIT', 'WEALTH', 'INSURANCE'].includes(form.type)" label="到期/年化">
           <el-date-picker v-model="form.maturityDate" type="date" value-format="YYYY-MM-DD" style="width: 55%" />
-          <el-input-number v-model="form.annualRate" :precision="2" placeholder="%" style="width: 43%; margin-left: 2%" />
+          <el-input-number v-model="form.annualRate" inputmode="decimal" :precision="2" placeholder="%" style="width: 43%; margin-left: 2%" />
         </el-form-item>
         <el-form-item label="计入净资产"><el-switch v-model="form.includeInNetWorth" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" :rows="2" /></el-form-item>
@@ -86,15 +86,15 @@
         </el-form-item>
         <el-form-item label="日期"><el-date-picker v-model="trade.tradeDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
         <template v-if="['BUY', 'SELL'].includes(trade.action)">
-          <el-form-item label="数量"><el-input-number v-model="trade.quantity" :precision="4" style="width: 100%" /></el-form-item>
-          <el-form-item label="价格"><el-input-number v-model="trade.price" :precision="4" style="width: 100%" /></el-form-item>
+          <el-form-item label="数量"><el-input-number v-model="trade.quantity" inputmode="decimal" :precision="4" style="width: 100%" /></el-form-item>
+          <el-form-item label="价格"><el-input-number v-model="trade.price" inputmode="decimal" :precision="4" style="width: 100%" /></el-form-item>
         </template>
-        <el-form-item v-if="trade.action === 'VALUATION'" label="新价格"><el-input-number v-model="trade.price" :precision="4" style="width: 100%" /></el-form-item>
+        <el-form-item v-if="trade.action === 'VALUATION'" label="新价格"><el-input-number v-model="trade.price" inputmode="decimal" :precision="4" style="width: 100%" /></el-form-item>
         <el-form-item :label="trade.action === 'VALUATION' ? '或新市值' : '金额'">
-          <el-input-number v-model="trade.amount" :precision="2" style="width: 100%" />
+          <el-input-number v-model="trade.amount" inputmode="decimal" :precision="2" style="width: 100%" />
           <div class="muted" style="font-size: 12px">{{ trade.action === 'VALUATION' ? '理财/股权直接填新市值' : '不填则按 数量 × 价格' }}</div>
         </el-form-item>
-        <el-form-item v-if="['BUY', 'SELL'].includes(trade.action)" label="费用"><el-input-number v-model="trade.fee" :precision="2" style="width: 100%" /></el-form-item>
+        <el-form-item v-if="['BUY', 'SELL'].includes(trade.action)" label="费用"><el-input-number v-model="trade.fee" inputmode="decimal" :precision="2" style="width: 100%" /></el-form-item>
         <el-form-item v-if="trade.action !== 'VALUATION'" label="资金账户">
           <el-select v-model="trade.cashAccountId" clearable placeholder="不选则不记现金流水" style="width: 100%"><el-option v-for="o in accountOptions()" :key="o.value" v-bind="o" /></el-select>
         </el-form-item>
@@ -103,13 +103,13 @@
     </el-dialog>
 
     <el-drawer v-model="trades.visible" :title="`${trades.row?.name} · 交易记录`" size="560px">
-      <el-table :data="trades.list" size="small">
+      <ResponsiveTable :data="trades.list" size="small">
         <el-table-column label="日期" width="92"><template #default="{ row }">{{ date(row.tradeDate) }}</template></el-table-column>
-        <el-table-column label="操作" width="90"><template #default="{ row }">{{ labelOf(TRADE_ACTIONS, row.action) }}</template></el-table-column>
+        <el-table-column label="操作" width="90" mobile="badge"><template #default="{ row }">{{ labelOf(TRADE_ACTIONS, row.action) }}</template></el-table-column>
         <el-table-column label="数量×价格"><template #default="{ row }">{{ row.quantity ? `${Number(row.quantity)} × ${Number(row.price)}` : '' }}</template></el-table-column>
-        <el-table-column label="金额" align="right"><template #default="{ row }"><span class="money">{{ money(row.amount) }}</span></template></el-table-column>
+        <el-table-column label="金额" align="right" mobile="amount"><template #default="{ row }"><span class="money">{{ money(row.amount) }}</span></template></el-table-column>
         <el-table-column label="收益" align="right"><template #default="{ row }"><span v-if="row.pnl != null" class="money">{{ money(row.pnl, true) }}</span></template></el-table-column>
-      </el-table>
+      </ResponsiveTable>
     </el-drawer>
   </div>
 </template>
@@ -122,6 +122,7 @@ import api from '@/api'
 import { money, date } from '@/utils/format'
 import { HOLDING_TYPES, MARKETS, TRADE_ACTIONS, labelOf } from '@/constants'
 import { accountOptions, loadMeta } from '@/composables/useMeta'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 
 const loading = ref(false)
 const list = ref([])

@@ -25,8 +25,8 @@
     <el-dialog v-model="rp.visible" :title="`${rp.row?.counterparty} · ${rp.row?.direction === 'LEND' ? '回款' : '还款'}`" width="440px">
       <el-form label-width="80px">
         <el-form-item label="日期"><el-date-picker v-model="rp.repayDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
-        <el-form-item label="本金"><el-input-number v-model="rp.principalPart" :precision="2" :min="0" style="width: 100%" /></el-form-item>
-        <el-form-item label="利息"><el-input-number v-model="rp.interestPart" :precision="2" :min="0" style="width: 100%" /></el-form-item>
+        <el-form-item label="本金"><el-input-number v-model="rp.principalPart" inputmode="decimal" :precision="2" :min="0" style="width: 100%" /></el-form-item>
+        <el-form-item label="利息"><el-input-number v-model="rp.interestPart" inputmode="decimal" :precision="2" :min="0" style="width: 100%" /></el-form-item>
         <el-form-item label="资金账户">
           <el-select v-model="rp.accountId" clearable placeholder="不选则不记现金流水" style="width: 100%"><el-option v-for="o in accountOptions()" :key="o.value" v-bind="o" /></el-select>
         </el-form-item>
@@ -36,12 +36,12 @@
     </el-dialog>
 
     <el-drawer v-model="hist.visible" :title="`${hist.row?.counterparty} · 还款记录`" size="480px">
-      <el-table :data="hist.list" size="small">
+      <ResponsiveTable :data="hist.list" size="small">
         <el-table-column label="日期" width="100"><template #default="{ row }">{{ date(row.repayDate) }}</template></el-table-column>
         <el-table-column label="本金" align="right"><template #default="{ row }"><span class="money">{{ money(row.principalPart) }}</span></template></el-table-column>
         <el-table-column label="利息" align="right"><template #default="{ row }"><span class="money">{{ money(row.interestPart) }}</span></template></el-table-column>
-        <el-table-column prop="remark" label="备注" />
-      </el-table>
+        <el-table-column prop="remark" label="备注" mobile="full" />
+      </ResponsiveTable>
     </el-drawer>
   </div>
 </template>
@@ -52,6 +52,7 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '@/api'
 import CrudTable from '@/components/CrudTable.vue'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 import { money, date } from '@/utils/format'
 import { LOAN_DIRECTIONS, LOAN_KINDS, LOAN_STATUS, opts } from '@/constants'
 import { accountOptions } from '@/composables/useMeta'
@@ -62,12 +63,12 @@ const columns = [
   { prop: 'direction', label: '方向', type: 'tag', tagList: LOAN_DIRECTIONS, width: 120 },
   { prop: 'counterparty', label: '对方', minWidth: 130 },
   { prop: 'kind', label: '类型', type: 'enum', tagList: LOAN_KINDS, width: 100 },
-  { prop: 'balance', label: '未还余额', align: 'right', width: 150 },
+  { prop: 'balance', label: '未还余额', align: 'right', width: 150, mobile: 'amount' },
   { prop: 'annualRate', label: '年利率%', width: 80 },
   { prop: 'monthlyPayment', label: '月供', type: 'money', align: 'right', width: 100 },
   { prop: 'startDate', label: '起始', type: 'date', width: 100 },
   { prop: 'status', label: '状态', type: 'tag', tagList: LOAN_STATUS, width: 90 },
-  { prop: 'remark', label: '备注', minWidth: 200, ellipsis: true }
+  { prop: 'remark', label: '备注', minWidth: 200, ellipsis: true, mobile: 'full' }
 ]
 const formFields = [
   { prop: 'direction', label: '方向', type: 'select', options: opts(LOAN_DIRECTIONS), required: true },

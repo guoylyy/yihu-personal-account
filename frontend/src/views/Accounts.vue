@@ -30,7 +30,7 @@
         <el-form-item label="系统余额"><span class="money">{{ money(cal.row?.balance) }}</span></el-form-item>
         <el-form-item label="真实余额"><el-input-number v-model="cal.balance" :precision="2" style="width: 100%" /></el-form-item>
         <el-form-item label="截至日期"><el-date-picker v-model="cal.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
-        <div class="muted" style="font-size: 12px; padding-left: 90px">信用卡填负数表示欠款，如欠 3,000 填 -3000。之前的流水保留，只是不再影响余额。</div>
+        <div class="muted m-form-hint" style="font-size: 12px; padding-left: 90px">信用卡填负数表示欠款，如欠 3,000 填 -3000。之前的流水保留，只是不再影响余额。</div>
       </el-form>
       <template #footer>
         <el-button @click="cal.visible = false">取消</el-button>
@@ -42,7 +42,7 @@
       <el-form label-width="80px">
         <el-form-item label="转出"><el-select v-model="tr.fromAccountId" style="width: 100%"><el-option v-for="o in accountOptions()" :key="o.value" v-bind="o" /></el-select></el-form-item>
         <el-form-item label="转入"><el-select v-model="tr.toAccountId" style="width: 100%"><el-option v-for="o in accountOptions()" :key="o.value" v-bind="o" /></el-select></el-form-item>
-        <el-form-item label="金额"><el-input-number v-model="tr.amount" :precision="2" :min="0" style="width: 100%" /></el-form-item>
+        <el-form-item label="金额"><el-input-number v-model="tr.amount" inputmode="decimal" :precision="2" :min="0" style="width: 100%" /></el-form-item>
         <el-form-item label="日期"><el-date-picker v-model="tr.txnDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
         <el-form-item label="说明"><el-input v-model="tr.description" placeholder="如：还光大信用卡" /></el-form-item>
       </el-form>
@@ -77,10 +77,10 @@ const columns = [
   { prop: 'institution', label: '机构', width: 110 },
   { prop: 'lastNo', label: '尾号', width: 70 },
   { prop: 'owner', label: '归属', type: 'enum', tagList: OWNERS, width: 70 },
-  { prop: 'balance', label: '当前余额', align: 'right', width: 140 },
+  { prop: 'balance', label: '当前余额', align: 'right', width: 140, mobile: 'amount' },
   { prop: 'initialDate', label: '校准日', width: 110 },
-  { prop: 'aliases', label: '识别别名', minWidth: 160, ellipsis: true },
-  { prop: 'remark', label: '备注', minWidth: 120, ellipsis: true }
+  { prop: 'aliases', label: '识别别名', minWidth: 160, ellipsis: true, mobile: 'full' },
+  { prop: 'remark', label: '备注', minWidth: 120, ellipsis: true, mobile: 'full' }
 ]
 const formFields = [
   { prop: 'name', label: '账户名', required: true },
@@ -88,7 +88,7 @@ const formFields = [
   { prop: 'institution', label: '机构' },
   { prop: 'lastNo', label: '尾号' },
   { prop: 'owner', label: '归属', type: 'select', options: opts(OWNERS) },
-  { prop: 'initialBalance', label: '期初余额', type: 'money', hint: '期初日当天的真实余额；信用卡欠款填负数' },
+  { prop: 'initialBalance', label: '期初余额', type: 'money', negative: true, hint: '期初日当天的真实余额；信用卡欠款填负数' },
   { prop: 'initialDate', label: '期初日', type: 'date' },
   { prop: 'aliases', label: '识别别名', placeholder: '逗号分隔', hint: '导入账单 / AI 识别时用：如「泰隆银行储蓄卡(0595),0595」' },
   { prop: 'creditLimit', label: '信用额度', type: 'money' },

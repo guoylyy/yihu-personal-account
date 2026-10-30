@@ -35,9 +35,9 @@
 
     <div class="section-title">历史快照</div>
     <div class="table-card">
-      <el-table :data="snaps" size="small">
+      <ResponsiveTable :data="snaps" size="small">
         <el-table-column prop="period" label="月份" width="90" />
-        <el-table-column v-for="c in cols" :key="c.k" :label="c.l" align="right">
+        <el-table-column v-for="c in cols" :key="c.k" :label="c.l" align="right" :mobile="c.k === 'netWorth' ? 'amount' : undefined">
           <template #default="{ row }"><span class="money" :class="{ accent: c.k === 'netWorth' }">{{ moneyShort(row[c.k]) }}</span></template>
         </el-table-column>
         <el-table-column label="环比" align="right" width="110">
@@ -45,7 +45,7 @@
             <span v-if="snaps[$index + 1]" class="money" :class="delta(row, $index) >= 0 ? 'money-in' : 'money-out'">{{ money(delta(row, $index), true) }}</span>
           </template>
         </el-table-column>
-      </el-table>
+      </ResponsiveTable>
     </div>
   </div>
 </template>
@@ -57,6 +57,7 @@ import { marked } from 'marked'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { money, moneyShort, currentPeriod, periodOptions } from '@/utils/format'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 
 const router = useRouter()
 const period = ref(currentPeriod())
@@ -99,4 +100,10 @@ onActivated(load)
 .md :deep(blockquote) { color: var(--text-muted); font-size: 12px; }
 .md :deep(ul) { padding-left: 18px; }
 .section-title { display: flex; }
+@media (max-width: 768px) {
+  .md { padding: 8px 12px 12px; font-size: 14px; max-height: none; }
+  .md :deep(h2) { font-size: 15px; }
+  .md :deep(td), .md :deep(th) { font-size: 14px; }
+  .md :deep(blockquote) { font-size: 14px; }
+}
 </style>

@@ -7,6 +7,9 @@
       </div>
     </div>
 
+    <el-alert v-if="isMobile" type="warning" :closable="false" show-icon class="m-desktop-tip"
+              title="建议在电脑上操作" description="批量导入要逐行核对科目和账户，手机屏幕上不方便；功能照常可用。" />
+
     <div v-if="!preview" class="table-card upload-card">
       <el-upload drag :auto-upload="false" :show-file-list="false" accept=".csv,.xls,.xlsx" :on-change="onFile">
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
@@ -46,14 +49,14 @@
       </div>
 
       <div class="table-card">
-        <el-table :data="shown" size="small" max-height="600">
-          <el-table-column label="时间" width="140"><template #default="{ row }">{{ row.txnDate }} {{ row.txnTime?.slice(0, 5) }}</template></el-table-column>
-          <el-table-column label="金额" align="right" width="100">
+        <ResponsiveTable :data="shown" size="small" max-height="600">
+          <el-table-column label="时间" width="140" mobile="full"><template #default="{ row }">{{ row.txnDate }} {{ row.txnTime?.slice(0, 5) }}</template></el-table-column>
+          <el-table-column label="金额" align="right" width="100" mobile="amount">
             <template #default="{ row }"><span class="money" :class="row.direction === 'IN' ? 'money-in' : 'money-out'">{{ row.direction === 'IN' ? '+' : '−' }}{{ money(row.amount) }}</span></template>
           </el-table-column>
-          <el-table-column prop="counterparty" label="对方" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="description" label="说明" min-width="150" show-overflow-tooltip />
-          <el-table-column label="科目" width="170">
+          <el-table-column prop="counterparty" label="对方" min-width="140" show-overflow-tooltip mobile="title" />
+          <el-table-column prop="description" label="说明" min-width="150" show-overflow-tooltip mobile="full" />
+          <el-table-column label="科目" width="170" mobile="full">
             <template #default="{ row }">
               <el-select v-if="!row.skip && !row.duplicate" v-model="row.categoryId" size="small" filterable clearable placeholder="未分类" @change="row.learn = true">
                 <el-option-group v-for="g in categoryGroups()" :key="g.label" :label="g.label"><el-option v-for="o in g.options" :key="o.value" v-bind="o" /></el-option-group>
@@ -61,7 +64,7 @@
               <span v-if="row.classifiedBy === 'ai'" class="ai-mark">AI</span>
             </template>
           </el-table-column>
-          <el-table-column label="账户" width="130">
+          <el-table-column label="账户" width="130" mobile="full">
             <template #default="{ row }">
               <el-select v-if="!row.skip && !row.duplicate" v-model="row.accountId" size="small" clearable placeholder="—">
                 <el-option v-for="o in accountOptions()" :key="o.value" v-bind="o" />
@@ -71,26 +74,26 @@
           <el-table-column label="公司款" width="70" align="center">
             <template #default="{ row }"><el-checkbox v-if="!row.skip && !row.duplicate" v-model="row.isBusiness" /></template>
           </el-table-column>
-          <el-table-column label="状态" width="120">
+          <el-table-column label="状态" width="120" mobile="badge">
             <template #default="{ row }">
               <el-tag v-if="row.duplicate" size="small" type="info">重复 {{ row.duplicate }}</el-tag>
               <el-tag v-else-if="row.skip" size="small" type="info">{{ row.skipReason }}</el-tag>
               <el-tag v-else size="small" type="success" effect="plain">待导入</el-tag>
             </template>
           </el-table-column>
-        </el-table>
+        </ResponsiveTable>
       </div>
     </template>
 
     <div class="section-title">导入记录</div>
     <div class="table-card">
-      <el-table :data="batches" size="small">
+      <ResponsiveTable :data="batches" size="small">
         <el-table-column prop="importBatch" label="批次" />
         <el-table-column label="笔数" width="80"><template #default="{ row }">{{ row._count }}</template></el-table-column>
         <el-table-column label="交易日期范围"><template #default="{ row }">{{ date(row._min.txnDate) }} ~ {{ date(row._max.txnDate) }}</template></el-table-column>
         <el-table-column label="导入时间" width="150"><template #default="{ row }">{{ datetime(row._max.createdAt) }}</template></el-table-column>
         <el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="danger" @click="undo(row)">撤销</el-button></template></el-table-column>
-      </el-table>
+      </ResponsiveTable>
     </div>
   </div>
 </template>
@@ -101,6 +104,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { money, date, datetime } from '@/utils/format'
 import { accountOptions, categoryGroups, loadMeta } from '@/composables/useMeta'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
+import { useViewport } from '@/composables/useViewport'
 
 const preview = ref(null)
 const tab = ref('todo')
@@ -108,6 +113,7 @@ const bulkAccount = ref('')
 const aiLoading = ref(false)
 const committing = ref(false)
 const batches = ref([])
+const { isMobile } = useViewport()
 
 const rows = computed(() => preview.value?.rows || [])
 const importable = computed(() => rows.value.filter((r) => !r.skip && !r.duplicate))
@@ -169,4 +175,9 @@ onMounted(() => { loadMeta(); loadBatches() })
 .how { font-size: 12px; line-height: 2; margin-top: 12px; }
 .stat-card .value small { font-size: 13px; color: var(--text-muted); }
 .ai-mark { font-size: 10px; color: var(--accent); margin-left: 4px; font-weight: 700; }
+@media (max-width: 768px) {
+  .upload-card { padding: 12px; }
+  .how { font-size: 14px; line-height: 1.8; }
+  .ai-mark { font-size: 14px; margin-left: 8px; }
+}
 </style>

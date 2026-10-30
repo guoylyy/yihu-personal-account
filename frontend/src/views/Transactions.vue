@@ -17,7 +17,11 @@
       <div class="stat-card"><div class="label">净额</div><div class="value" :class="summary.net >= 0 ? 'money-in' : 'money-out'">{{ money(summary.net, true) }}</div><div class="foot">共 {{ total }} 笔（按当前筛选）</div></div>
     </div>
 
-    <div class="filter-bar">
+    <FilterBar :active="activeFilters" @done="reload">
+      <template v-if="isMobile" #bar>
+        <el-input v-model="q.keyword" placeholder="对方 / 说明 / 编号" clearable :prefix-icon="Search"
+                  enterkeyhint="search" @keyup.enter="reload" @clear="reload" />
+      </template>
       <el-select v-model="q.period" placeholder="月份" clearable style="width: 110px" @change="reload">
         <el-option v-for="p in periodOptions(24)" :key="p" :label="p" :value="p" />
       </el-select>
@@ -42,10 +46,10 @@
       <el-select v-if="q.scope === 'business'" v-model="q.biz_status" placeholder="剥离状态" clearable style="width: 110px" @change="reload">
         <el-option v-for="o in BIZ_STATUS" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
-      <el-input v-model="q.keyword" placeholder="对方 / 说明 / 编号" clearable style="width: 180px" @keyup.enter="reload" @clear="reload" />
-      <el-button type="primary" @click="reload">查询</el-button>
+      <el-input v-if="!isMobile" v-model="q.keyword" placeholder="对方 / 说明 / 编号" clearable style="width: 180px" @keyup.enter="reload" @clear="reload" />
+      <el-button v-if="!isMobile" type="primary" @click="reload">查询</el-button>
       <el-button text @click="reset">重置</el-button>
-    </div>
+    </FilterBar>
 
     <div v-if="selection.length" class="batch-bar">
       已选 <b>{{ selection.length }}</b> 笔：
@@ -65,10 +69,10 @@
     </div>
 
     <div class="table-card">
-      <el-table ref="tableRef" :data="list" v-loading="loading" size="small" row-key="id" @selection-change="selection = $event">
+      <ResponsiveTable ref="tableRef" :data="list" v-loading="loading" size="small" row-key="id" @selection-change="selection = $event">
         <el-table-column type="selection" width="36" />
         <el-table-column label="日期" width="92"><template #default="{ row }">{{ date(row.txnDate) }}</template></el-table-column>
-        <el-table-column label="金额" align="right" width="110">
+        <el-table-column label="金额" align="right" width="110" mobile="amount">
           <template #default="{ row }">
             <span class="money" :class="row.direction === 'IN' ? 'money-in' : 'money-out'">{{ row.direction === 'IN' ? '+' : '−' }}{{ money(row.amount) }}</span>
           </template>
@@ -80,8 +84,8 @@
             <div v-if="suggest[row.id]" class="suggest" @click="applySuggest(row)">AI 建议：{{ suggest[row.id].label }} <el-icon><Check /></el-icon></div>
           </template>
         </el-table-column>
-        <el-table-column prop="counterparty" label="对方" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="description" label="说明" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="counterparty" label="对方" min-width="140" show-overflow-tooltip mobile="title" />
+        <el-table-column prop="description" label="说明" min-width="160" show-overflow-tooltip mobile="full" />
         <el-table-column label="账户" width="96"><template #default="{ row }">{{ row.account?.name || '—' }}</template></el-table-column>
         <el-table-column label="公私" width="96">
           <template #default="{ row }">
@@ -95,10 +99,10 @@
             <el-button link type="danger" @click="remove(row)">作废</el-button>
           </template>
         </el-table-column>
-      </el-table>
+      </ResponsiveTable>
       <div class="pager">
-        <el-pagination v-model:current-page="page" v-model:page-size="pageSize" :total="total" :page-sizes="[50, 100, 200]"
-                       layout="total, sizes, prev, pager, next" @change="load" />
+        <ResponsivePager v-model:current-page="page" v-model:page-size="pageSize" :total="total" :page-sizes="[50, 100, 200]"
+                         layout="total, sizes, prev, pager, next" @change="load" />
       </div>
     </div>
 
@@ -107,7 +111,7 @@
         <el-form-item label="方向">
           <el-radio-group v-model="form.direction"><el-radio-button value="OUT">支出</el-radio-button><el-radio-button value="IN">收入</el-radio-button></el-radio-group>
         </el-form-item>
-        <el-form-item label="金额"><el-input-number v-model="form.amount" :precision="2" :min="0" style="width: 100%" /></el-form-item>
+        <el-form-item label="金额"><el-input-number v-model="form.amount" inputmode="decimal" :precision="2" :min="0" style="width: 100%" /></el-form-item>
         <el-form-item label="日期"><el-date-picker v-model="form.txnDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
         <el-form-item label="账户"><el-select v-model="form.accountId" clearable style="width: 100%"><el-option v-for="o in accountOptions()" :key="o.value" v-bind="o" /></el-select></el-form-item>
         <el-form-item label="科目">
@@ -136,14 +140,19 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onActivated, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import api from '@/api'
 import { money, date, periodOptions } from '@/utils/format'
 import { BIZ_STATUS, SOURCES, ORGS, labelOf, tagOf } from '@/constants'
 import { accountOptions, categoryGroups, categories, loadMeta } from '@/composables/useMeta'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
+import ResponsivePager from '@/components/mobile/ResponsivePager'
+import FilterBar from '@/components/mobile/FilterBar.vue'
+import { useViewport } from '@/composables/useViewport'
 
 const route = useRoute()
 const router = useRouter()
@@ -161,6 +170,8 @@ const batchCat = ref('')
 const batchLearn = ref(true)
 const aiLoading = ref(false)
 const suggest = ref({})
+const { isMobile } = useViewport()
+const activeFilters = computed(() => ['period', 'scope', 'account_id', 'category_id', 'direction', 'biz_status'].filter((k) => q[k]).length)
 
 function fromRoute() { Object.assign(q, empty, route.query) }
 
@@ -255,4 +266,9 @@ onActivated(load)
 <style scoped>
 .batch-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #eef5f1; border: 1px solid #cfe3d8; border-radius: var(--card-radius); padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
 .suggest { font-size: 12px; color: var(--accent); cursor: pointer; }
+@media (max-width: 768px) {
+  .batch-bar { font-size: 14px; padding: 10px 12px; }
+  .batch-bar :deep(.el-divider) { display: none; }
+  .suggest { font-size: 14px; min-height: 44px; display: flex; align-items: center; gap: 4px; }
+}
 </style>

@@ -68,4 +68,9 @@ onMounted(loadLogs)
 .log { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .log:last-child { border-bottom: none; }
 .log-text { font-size: 13px; white-space: pre-wrap; max-height: 64px; overflow: hidden; }
+.answer { overflow-x: auto; }
+@media (max-width: 768px) {
+  .answer, .log-text { font-size: 14px; }
+  .log-text { max-height: 72px; }
+}
 </style>

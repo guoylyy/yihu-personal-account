@@ -21,7 +21,7 @@
 
     <el-dialog v-model="val.visible" :title="`更新估值 · ${val.row?.name}`" width="420px">
       <el-form label-width="80px">
-        <el-form-item label="新估值"><el-input-number v-model="val.value" :precision="2" :step="10000" style="width: 100%" /></el-form-item>
+        <el-form-item label="新估值"><el-input-number v-model="val.value" inputmode="decimal" :precision="2" :step="10000" style="width: 100%" /></el-form-item>
         <el-form-item label="日期"><el-date-picker v-model="val.valDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
         <el-form-item label="依据"><el-input v-model="val.note" placeholder="如：同小区 9 月成交均价 × 面积" /></el-form-item>
       </el-form>
@@ -29,11 +29,11 @@
     </el-dialog>
 
     <el-drawer v-model="hist.visible" :title="`${hist.row?.name} · 估值历史`" size="460px">
-      <el-table :data="hist.list" size="small">
+      <ResponsiveTable :data="hist.list" size="small">
         <el-table-column label="日期" width="100"><template #default="{ row }">{{ date(row.valDate) }}</template></el-table-column>
-        <el-table-column label="估值" align="right"><template #default="{ row }"><span class="money">{{ money(row.value) }}</span></template></el-table-column>
-        <el-table-column prop="note" label="依据" />
-      </el-table>
+        <el-table-column label="估值" align="right" mobile="amount"><template #default="{ row }"><span class="money">{{ money(row.value) }}</span></template></el-table-column>
+        <el-table-column prop="note" label="依据" mobile="full" />
+      </ResponsiveTable>
     </el-drawer>
   </div>
 </template>
@@ -44,6 +44,7 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '@/api'
 import CrudTable from '@/components/CrudTable.vue'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 import { money, moneyShort, date } from '@/utils/format'
 import { ASSET_TYPES, OWNERS, opts } from '@/constants'
 
@@ -53,11 +54,11 @@ const columns = [
   { prop: 'type', label: '类型', type: 'enum', tagList: ASSET_TYPES, width: 80 },
   { prop: 'name', label: '名称', minWidth: 140 },
   { prop: 'owner', label: '产权', type: 'enum', tagList: OWNERS, width: 70 },
-  { prop: 'currentValue', label: '当前估值', align: 'right', width: 150 },
+  { prop: 'currentValue', label: '当前估值', align: 'right', width: 150, mobile: 'amount' },
   { prop: 'valuedAt', label: '估值日', type: 'date', width: 100 },
-  { prop: 'valuationNote', label: '估值依据', minWidth: 140, ellipsis: true },
-  { prop: 'address', label: '地址', minWidth: 140, ellipsis: true },
-  { prop: 'remark', label: '备注', minWidth: 120, ellipsis: true }
+  { prop: 'valuationNote', label: '估值依据', minWidth: 140, ellipsis: true, mobile: 'full' },
+  { prop: 'address', label: '地址', minWidth: 140, ellipsis: true, mobile: 'full' },
+  { prop: 'remark', label: '备注', minWidth: 120, ellipsis: true, mobile: 'full' }
 ]
 const formFields = [
   { prop: 'type', label: '类型', type: 'select', options: opts(ASSET_TYPES), required: true },

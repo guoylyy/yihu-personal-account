@@ -81,4 +81,14 @@ async function submit() {
 .brand-sub { font-size: 12px; color: var(--text-muted); }
 .sso { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--text-muted); padding: 10px 0 4px; }
 .hint { margin-top: 18px; font-size: 12px; color: var(--text-muted); text-align: center; }
+@media (max-width: 768px) {
+  .login-page {
+    align-items: flex-start; padding: 16px;
+    padding-top: calc(12vh + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    min-height: 100dvh;
+  }
+  .login-card { padding: 26px 20px 20px; }
+  .brand-sub, .hint { font-size: 14px; }
+  .login-card :deep(.el-button--large) { height: 48px; font-size: 16px; }
+}
 </style>

@@ -24,11 +24,11 @@
         <div class="stat-card"><div class="label">全年预算</div><div class="value">{{ moneyShort(exec.total.annualBudget) }}</div></div>
       </div>
       <div class="table-card">
-        <el-table :data="exec.rows" size="small" v-loading="loading">
+        <ResponsiveTable :data="exec.rows" size="small" v-loading="loading">
           <el-table-column label="科目" width="150"><template #default="{ row }">{{ row.code === row.name ? row.name : `${row.code} ${row.name}` }} <span class="muted" style="font-size: 12px">{{ row.group }}</span></template></el-table-column>
           <el-table-column label="月预算" align="right" width="110"><template #default="{ row }"><span class="money">{{ money(row.monthlyBudget) }}</span></template></el-table-column>
-          <el-table-column label="本月实际" align="right" width="110"><template #default="{ row }"><span class="money">{{ money(row.actual) }}</span></template></el-table-column>
-          <el-table-column label="本月执行" min-width="180">
+          <el-table-column label="本月实际" align="right" width="110" mobile="amount"><template #default="{ row }"><span class="money">{{ money(row.actual) }}</span></template></el-table-column>
+          <el-table-column label="本月执行" min-width="180" mobile="full">
             <template #default="{ row }">
               <div class="prog"><el-progress :percentage="Math.min(row.rate ?? 100, 100)" :show-text="false" :stroke-width="8" :color="color(row.rate)" style="flex: 1" />
                 <span class="rate" :style="{ color: color(row.rate) }">{{ row.rate == null ? '无预算' : row.rate + '%' }}</span></div>
@@ -36,7 +36,7 @@
           </el-table-column>
           <el-table-column label="年累计实际 / 预算" align="right" width="190"><template #default="{ row }"><span class="money">{{ money(row.ytdActual) }}</span> <span class="muted">/ {{ money(row.ytdBudget) }}</span></template></el-table-column>
           <el-table-column label="年执行" width="80" align="right"><template #default="{ row }"><span :style="{ color: color(row.ytdRate) }">{{ row.ytdRate == null ? '—' : row.ytdRate + '%' }}</span></template></el-table-column>
-        </el-table>
+        </ResponsiveTable>
       </div>
     </template>
 
@@ -49,12 +49,12 @@
         <el-button type="primary" @click="saveEdit">保存</el-button>
       </div>
       <div class="table-card">
-        <el-table :data="editRows" size="small">
+        <ResponsiveTable :data="editRows" size="small">
           <el-table-column label="科目" width="170"><template #default="{ row }">{{ row.code }} {{ row.name }} <span class="muted" style="font-size: 12px">{{ row.groupName }}</span></template></el-table-column>
-          <el-table-column label="月度" width="170"><template #default="{ row }"><el-input-number v-model="row.monthly" :precision="0" :step="500" :min="0" size="small" controls-position="right" @change="row.annual = Math.round((row.monthly || 0) * 12)" /></template></el-table-column>
-          <el-table-column label="年度" width="170"><template #default="{ row }"><el-input-number v-model="row.annual" :precision="0" :step="1000" :min="0" size="small" controls-position="right" @change="row.monthly = Math.round((row.annual || 0) / 12)" /></template></el-table-column>
-          <el-table-column label="说明"><template #default="{ row }"><el-input v-model="row.remark" size="small" /></template></el-table-column>
-        </el-table>
+          <el-table-column label="月度" width="170"><template #default="{ row }"><el-input-number v-model="row.monthly" inputmode="numeric" :precision="0" :step="500" :min="0" size="small" controls-position="right" @change="row.annual = Math.round((row.monthly || 0) * 12)" /></template></el-table-column>
+          <el-table-column label="年度" width="170"><template #default="{ row }"><el-input-number v-model="row.annual" inputmode="numeric" :precision="0" :step="1000" :min="0" size="small" controls-position="right" @change="row.monthly = Math.round((row.annual || 0) / 12)" /></template></el-table-column>
+          <el-table-column label="说明" mobile="full"><template #default="{ row }"><el-input v-model="row.remark" size="small" /></template></el-table-column>
+        </ResponsiveTable>
       </div>
     </template>
   </div>
@@ -67,6 +67,7 @@ import dayjs from 'dayjs'
 import api from '@/api'
 import { money, moneyShort, currentPeriod, periodOptions } from '@/utils/format'
 import { categories, loadMeta } from '@/composables/useMeta'
+import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 
 const tab = ref('exec')
 const loading = ref(false)
@@ -108,4 +109,8 @@ onActivated(loadExec)
 <style scoped>
 .prog { display: flex; align-items: center; gap: 10px; }
 .rate { width: 60px; text-align: right; font-size: 12px; font-family: var(--font-num); }
+@media (max-width: 768px) {
+  .prog { width: 100%; }
+  .rate { font-size: 14px; }
+}
 </style>

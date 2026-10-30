@@ -80,7 +80,7 @@
                 <el-radio-button value="OUT">支出</el-radio-button><el-radio-button value="IN">收入</el-radio-button>
               </el-radio-group>
             </Field>
-            <Field label="金额"><el-input-number v-model="it.amount" :precision="2" :min="0" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="金额"><el-input-number v-model="it.amount" inputmode="decimal" :precision="2" :min="0" size="small" controls-position="right" style="width: 100%" /></Field>
             <Field label="账户"><AccountSelect v-model="it.accountId" /></Field>
             <Field label="科目" wide>
               <el-select v-model="it.categoryId" filterable size="small" style="width: 100%" placeholder="选科目" @change="onCategory(it)">
@@ -103,7 +103,7 @@
           </template>
 
           <template v-else-if="it.type === 'transfer'">
-            <Field label="金额"><el-input-number v-model="it.amount" :precision="2" :min="0" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="金额"><el-input-number v-model="it.amount" inputmode="decimal" :precision="2" :min="0" size="small" controls-position="right" style="width: 100%" /></Field>
             <Field label="转出"><AccountSelect v-model="it.accountId" /></Field>
             <Field label="转入"><AccountSelect v-model="it.toAccountId" /></Field>
             <Field label="说明" wide><el-input v-model="it.description" size="small" /></Field>
@@ -112,22 +112,22 @@
           <template v-else-if="it.type === 'trade'">
             <Field label="持仓"><OptSelect v-model="it.holdingId" :options="holdingOpts" /></Field>
             <Field label="操作"><OptSelect v-model="it.action" :options="TRADE_ACTIONS.filter((a) => a.value !== 'VALUATION')" /></Field>
-            <Field label="数量"><el-input-number v-model="it.quantity" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
-            <Field label="价格"><el-input-number v-model="it.price" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
-            <Field label="金额"><el-input-number v-model="it.amount" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
-            <Field label="费用"><el-input-number v-model="it.fee" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="数量"><el-input-number v-model="it.quantity" inputmode="decimal" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="价格"><el-input-number v-model="it.price" inputmode="decimal" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="金额"><el-input-number v-model="it.amount" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="费用"><el-input-number v-model="it.fee" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
             <Field label="资金账户"><AccountSelect v-model="it.accountId" placeholder="可不选" /></Field>
           </template>
 
           <template v-else-if="it.type === 'holding_valuation'">
             <Field label="持仓"><OptSelect v-model="it.holdingId" :options="holdingOpts" /></Field>
-            <Field label="新价格"><el-input-number v-model="it.price" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
-            <Field label="或新市值"><el-input-number v-model="it.amount" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="新价格"><el-input-number v-model="it.price" inputmode="decimal" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="或新市值"><el-input-number v-model="it.amount" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
           </template>
 
           <template v-else-if="it.type === 'asset_valuation'">
             <Field label="资产"><OptSelect v-model="it.assetId" :options="assetOpts" /></Field>
-            <Field label="新估值"><el-input-number v-model="it.amount" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="新估值"><el-input-number v-model="it.amount" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
             <Field label="依据" wide><el-input v-model="it.description" size="small" /></Field>
           </template>
 
@@ -138,15 +138,15 @@
 
           <template v-else-if="it.type === 'loan_repay'">
             <Field label="借贷"><OptSelect v-model="it.loanId" :options="loanOpts" /></Field>
-            <Field label="本金"><el-input-number v-model="it.principal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
-            <Field label="利息"><el-input-number v-model="it.interest" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="本金"><el-input-number v-model="it.principal" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="利息"><el-input-number v-model="it.interest" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
             <Field label="账户"><AccountSelect v-model="it.accountId" placeholder="可不选" /></Field>
           </template>
 
           <template v-else-if="it.type === 'new_loan'">
             <Field label="方向"><OptSelect v-model="it.direction" :options="LOAN_DIRECTIONS" /></Field>
             <Field label="对方"><el-input v-model="it.counterparty" size="small" /></Field>
-            <Field label="金额"><el-input-number v-model="it.amount" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="金额"><el-input-number v-model="it.amount" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
             <Field label="类型"><OptSelect v-model="it.kind" :options="LOAN_KINDS" /></Field>
             <Field label="说明" wide><el-input v-model="it.description" size="small" /></Field>
           </template>
@@ -156,9 +156,9 @@
             <Field label="类型"><OptSelect v-model="it.holdingType" :options="HOLDING_TYPES" /></Field>
             <Field label="代码"><el-input v-model="it.code" size="small" /></Field>
             <Field label="平台"><el-input v-model="it.platform" size="small" /></Field>
-            <Field label="数量"><el-input-number v-model="it.quantity" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
-            <Field label="价格"><el-input-number v-model="it.price" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
-            <Field label="金额"><el-input-number v-model="it.amount" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="数量"><el-input-number v-model="it.quantity" inputmode="decimal" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="价格"><el-input-number v-model="it.price" inputmode="decimal" :precision="4" size="small" controls-position="right" style="width: 100%" /></Field>
+            <Field label="金额"><el-input-number v-model="it.amount" inputmode="decimal" :precision="2" size="small" controls-position="right" style="width: 100%" /></Field>
             <Field label="资金账户"><AccountSelect v-model="it.accountId" placeholder="可不选" /></Field>
           </template>
         </div>
@@ -330,5 +330,36 @@ async function commit() {
 .fields :deep(.field.wide) { grid-column: span 2; }
 .fields :deep(.field > label) { width: 52px; flex-shrink: 0; font-size: 12px; color: var(--text-muted); text-align: right; }
 .fields :deep(.field > .ctl) { flex: 1; min-width: 0; display: flex; align-items: center; }
-@media (max-width: 720px) { .fields :deep(.field.wide) { grid-column: span 1; } }
+
+/* 手机：解析/截图固定在屏幕底部，示例横滑，草稿卡单列；只调布局，交互不变 */
+@media (max-width: 768px) {
+  .ai-entry { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .input-card :deep(.el-textarea__inner) { font-size: 16px; }
+  .examples { flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; min-width: 0; font-size: 14px; }
+  .examples > .muted { flex-shrink: 0; }
+  .ex { flex-shrink: 0; min-height: 44px; max-width: none; white-space: nowrap; }
+  .actions {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--surface); border-top: 1px solid var(--border);
+  }
+  .actions :deep(.el-upload), .actions > div:first-child { display: block; flex: 1; }
+  .actions .el-button { width: 100%; min-height: 48px; font-size: 15px; margin: 0; }
+  .actions > .el-button { flex: 2; }
+  .tip { font-size: 14px; line-height: 1.6; }
+  .thumb { width: 88px; height: 88px; }
+  .rm { top: 0; right: 0; width: 44px; height: 44px; font-size: 22px; background: transparent; }
+  .parsing { font-size: 14px; }
+  .drafts-head {
+    position: sticky; top: -12px; z-index: 5; flex-wrap: wrap; gap: 6px;
+    margin: 12px -4px 10px; padding: 8px 4px; background: var(--bg);
+  }
+  .draft { padding: 10px 12px 12px; }
+  .note { font-size: 14px; margin-left: 0; }
+  .fields { grid-template-columns: minmax(0, 1fr); }
+  .fields :deep(.field.wide) { grid-column: span 1; }
+  .fields :deep(.field) { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .fields :deep(.field > label) { width: auto; font-size: 14px; text-align: left; }
+  .fields :deep(.field > .ctl) { width: 100%; flex-wrap: wrap; }
+}
 </style>
