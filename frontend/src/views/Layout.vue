@@ -78,6 +78,7 @@ import { getUser, clearAuth } from '@/api'
 import { getPlatformHome } from '@/api/base'
 import { loadMeta } from '@/composables/useMeta'
 import { appVersion, loadAppVersion } from '@/composables/useAppVersion'
+import { loadFreedom } from '@/composables/useFreedom'
 import AiDrawer from '@/components/AiDrawer.vue'
 import NavMenu from './NavMenu.vue'
 import { useViewport } from '@/composables/useViewport'
@@ -92,6 +93,7 @@ const { isMobile, isTablet } = useViewport()
 onMounted(() => {
   loadMeta().catch(() => {})
   loadAppVersion().catch(() => {})
+  loadFreedom().catch(() => {})
 })
 
 function onCommand(cmd) {

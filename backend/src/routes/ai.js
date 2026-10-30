@@ -6,6 +6,7 @@ import { ok, badRequest, notFound, fail, wrap } from '../lib/response.js'
 import { aiStatus, llmJSON } from '../lib/llm.js'
 import { parseEntry, commitItems, resolveItems, ITEM_TYPES } from '../lib/aiEntry.js'
 import { balanceSheet, periodStats } from '../lib/networth.js'
+import { freedomOverview } from '../lib/freedom.js'
 import { currentUserId } from '../lib/tenant.js'
 import { loadContext, applyRefs, ContextError } from '../lib/aiContext.js'
 import { saveDrafts, getDraft, draftView, submitDraft } from '../lib/aiDrafts.js'
@@ -84,15 +85,17 @@ router.post('/ask', wrap(async (req, res) => {
   const q = String(req.body.question || '').trim()
   if (!q) return badRequest(res, '请输入问题')
   const periods = Array.from({ length: 6 }, (_, i) => dayjs().subtract(5 - i, 'month').format('YYYY-MM'))
-  const [sheet, stats, budgets] = await Promise.all([
+  const [sheet, stats, budgets, freedom] = await Promise.all([
     balanceSheet(),
     Promise.all(periods.map((p) => periodStats(p))),
-    prisma.budget.findMany({ where: { year: dayjs().year(), userId: currentUserId() }, include: { category: true } })
+    prisma.budget.findMany({ where: { year: dayjs().year(), userId: currentUserId() }, include: { category: true } }),
+    freedomOverview()
   ])
   const context = {
     资产负债表: sheet,
     近6个月收支: stats.map((s) => ({ 月份: s.period, 收入: s.income, 个人支出: s.expense, 公司款: s.business, 科目: s.byCategory.slice(0, 12).map((c) => `${c.code}${c.name}:${c.amount}`) })),
-    今年预算: budgets.map((b) => `${b.category.code}${b.category.name}: 月 ${b.monthlyAmount}`)
+    今年预算: budgets.map((b) => `${b.category.code}${b.category.name}: 月 ${b.monthlyAmount}`),
+    自由天数: { 状态: freedom.state, 可动用资金: freedom.available, 每日净消耗: freedom.daily, 天数: freedom.days, 见底日期: freedom.depleteDate, 提示: freedom.warnings.map((w) => w.text) }
   }
   try {
     const r = await llmJSON({

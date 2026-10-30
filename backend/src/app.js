@@ -15,6 +15,7 @@ import loansRouter from './routes/loans.js'
 import budgetsRouter from './routes/budgets.js'
 import dashboardRouter from './routes/dashboard.js'
 import closeRouter from './routes/close.js'
+import freedomRouter from './routes/freedom.js'
 import aiRouter from './routes/ai.js'
 import { auth } from './lib/auth.js'
 import { withTenant } from './lib/tenant.js'
@@ -44,6 +45,7 @@ app.use('/api/pf/loans', loansRouter)
 app.use('/api/pf/budgets', budgetsRouter)
 app.use('/api/pf/dashboard', dashboardRouter)
 app.use('/api/pf/close', closeRouter)
+app.use('/api/pf/freedom', freedomRouter)
 app.use('/api/pf/ai', aiRouter)
 
 // ---------- 以虎 One 接入：统一登录 + AI 工具（只读） ----------
@@ -55,7 +57,7 @@ mountPlatform(app, {
   tools: [
     {
       name: 'get_financial_overview', title: '个人财务总览',
-      description: '净资产、可动用资金、应急金覆盖月数、本月收支与储蓄率、资产结构、账户余额、待办提醒。问「我现在有多少钱」「这个月花了多少」时用。',
+      description: '净资产、自由天数、本月收支与储蓄率、资产结构、账户余额、待办提醒。问「我现在有多少钱」「这个月花了多少」时用。',
       inputSchema: { type: 'object', properties: { period } },
       run: ({ token, args }) => callSelf(token, '/api/pf/dashboard', { period: args.period })
     },
@@ -70,6 +72,26 @@ mountPlatform(app, {
       description: '某月的月结摘要（Markdown）：净资产变化、收支、检查清单。',
       inputSchema: { type: 'object', properties: { period } },
       run: ({ token, args }) => callSelf(token, '/api/pf/close/summary', { period: args.period })
+    },
+    {
+      name: 'get_freedom_overview', title: '自由天数',
+      description: '不再有工作收入时手上的钱能撑多少天：生活线和只保必要的天数、见底日期、可动用资金和每日净消耗的拆解、数据可信度提示。问「我能撑多久」「还有多少自由天数」时用。只复述返回的数字，不要自己算；state 不是 OK 时按 state 说明，不要给天数。',
+      inputSchema: { type: 'object', properties: {} },
+      run: ({ token }) => callSelf(token, '/api/pf/freedom')
+    },
+    {
+      name: 'simulate_decision', title: '模拟决策',
+      description: '算一个花钱决定对自由天数的影响，只读，不落账也不产生草稿。问「买这台车会怎样」「每月多 500 的订阅影响多大」「提前还 10 万房贷划算吗」时用。只复述返回的 before / after / delta，不要自己算；回答要说明一次性支出和长期支出的区别，并说明这是估算。提前还贷先用 get_freedom_overview 的 loans 取 loanId。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          oneOff: { type: 'number', description: '一次性支出金额' },
+          monthly: { type: 'number', description: '每月增加的支出，减少时填负数' },
+          loanId: { type: 'string', description: '提前还贷的借款 id' },
+          prepay: { type: 'number', description: '提前还款金额，要同时给 loanId' }
+        }
+      },
+      run: ({ token, args }) => callSelf(token, '/api/pf/freedom/simulate', args)
     }
   ]
 })

@@ -75,6 +75,7 @@
         <el-table-column label="金额" align="right" width="110" mobile="amount">
           <template #default="{ row }">
             <span class="money" :class="row.direction === 'IN' ? 'money-in' : 'money-out'">{{ row.direction === 'IN' ? '+' : '−' }}{{ money(row.amount) }}</span>
+            <div v-if="costOf(row)" class="cost-days">≈ {{ costOf(row) }} 天</div>
           </template>
         </el-table-column>
         <el-table-column label="科目" width="130">
@@ -156,6 +157,7 @@ import FilterBar from '@/components/mobile/FilterBar.vue'
 import PinButton from '@/components/PinButton.vue'
 import { useViewport } from '@/composables/useViewport'
 import { useAiPageContext, onAiCommitted } from '@/composables/useAiAssistant'
+import { costDays } from '@/composables/useFreedom'
 
 const route = useRoute()
 const router = useRouter()
@@ -262,6 +264,8 @@ async function remove(row) {
 }
 
 watch(() => route.query, () => { if (route.path === '/transactions') { fromRoute(); reload() } })
+const costOf = (row) => (row.direction === 'OUT' && !row.isBusiness ? costDays(row.amount, row.category?.groupName) : 0)
+
 onMounted(() => { loadMeta(); fromRoute(); load() })
 onActivated(load)
 onAiCommitted(load)

@@ -31,6 +31,14 @@
             <el-button type="primary" @click="changePwd">修改</el-button>
           </el-form>
         </div>
+        <div class="section-title">自由天数</div>
+        <div class="table-card pad">
+          <div class="switch-row">
+            <span>显示「这笔 ≈ N 天」</span>
+            <el-switch :model-value="showCost" @update:model-value="setShowCost" />
+          </div>
+          <div class="muted help">只出现在弹性支出上，不到 1 天不显示。只影响这台设备</div>
+        </div>
       </el-col>
     </el-row>
   </div>
@@ -40,6 +48,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import { showCost, setShowCost } from '@/composables/useFreedom'
 
 const ai = ref({})
 const pwd = reactive({ oldPassword: '', newPassword: '' })
@@ -51,6 +60,7 @@ onMounted(async () => { ai.value = await api.ai.status() })
 
 <style scoped>
 .pad { padding: 14px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
 .help { font-size: 12px; line-height: 2; margin-top: 12px; }
 code { background: #f2f0eb; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 @media (max-width: 768px) {

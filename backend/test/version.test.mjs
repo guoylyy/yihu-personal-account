@@ -39,6 +39,10 @@ test('GET /api/health：version 和 yh-app.json 一致，不需要登录', async
   assert.equal(typeof j.data.ts, 'number')
 })
 
+test('VERSION 文件和 yh-app.json 一致', () => {
+  assert.equal(fs.readFileSync(new URL('../../VERSION', import.meta.url), 'utf8').trim(), manifest.version)
+})
+
 test('readVersion：清单在上一级（容器里 /app/yh-app.json）也能读到，优先于 package.json', () => {
   const d = dir('container', { 'package.json': '{"version":"1.0.0"}' })
   fs.writeFileSync(path.join(d, '..', 'yh-app.json'), '{"version":"9.8.7"}')

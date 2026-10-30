@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import prisma from '../lib/prisma.js'
 import { ok, wrap } from '../lib/response.js'
 import { balanceSheet, periodStats } from '../lib/networth.js'
+import { freedomOverview } from '../lib/freedom.js'
 import { fmtMoney as m } from '../lib/money.js'
 import { currentUserId } from '../lib/tenant.js'
 
@@ -41,11 +42,11 @@ router.get('/checklist', wrap(async (req, res) => ok(res, await checklist(req.qu
 
 router.post('/snapshot', wrap(async (req, res) => {
   const period = req.body.period || dayjs().format('YYYY-MM')
-  const [sheet, stats] = await Promise.all([balanceSheet(), periodStats(period)])
+  const [sheet, stats, freedom] = await Promise.all([balanceSheet(), periodStats(period), freedomOverview()])
   const data = {
     cash: sheet.cash, investments: sheet.investments, equity: sheet.equity, receivables: sheet.receivables,
     fixedAssets: sheet.fixedAssets, totalAssets: sheet.totalAssets, liabilities: sheet.liabilities, netWorth: sheet.netWorth,
-    income: stats.income, expense: stats.expense, detail: { sheet, stats }, remark: req.body.remark || null
+    income: stats.income, expense: stats.expense, detail: { sheet, stats, freedom }, remark: req.body.remark || null
   }
   const userId = currentUserId()
   const row = await prisma.netWorthSnapshot.upsert({
@@ -54,12 +55,26 @@ router.post('/snapshot', wrap(async (req, res) => {
   return ok(res, row)
 }))
 
+function freedomLines(f) {
+  const days = (d) => (d == null ? '被动收入已覆盖' : `${d} 天`)
+  if (f.state === 'INSUFFICIENT') return [`再记 ${f.need} 个月就能算出来。`]
+  return [
+    '| 项目 | 数值 |', '|---|---:|',
+    `| 可动用资金 | ${m(f.available)} |`,
+    `| 自由天数（生活线） | ${days(f.days.living)} |`,
+    `| 只保必要（生存线） | ${days(f.days.survival)} |`,
+    `| 每日净消耗 | ${m(f.daily.living)} |`,
+    `| 被动收入覆盖 | ${f.passiveCoverage == null ? '—' : f.passiveCoverage + '%'} |`,
+    ...(f.warnings.length ? ['', ...f.warnings.map((w) => `- ${w.text}`)] : [])
+  ]
+}
+
 router.get('/summary', wrap(async (req, res) => {
   const period = req.query.period || dayjs().format('YYYY-MM')
-  const [sheet, s, prev, checks] = await Promise.all([
+  const [sheet, s, prev, checks, freedom] = await Promise.all([
     balanceSheet(), periodStats(period),
     prisma.netWorthSnapshot.findFirst({ where: { userId: currentUserId(), period: { lt: period } }, orderBy: { period: 'desc' } }),
-    checklist(period)
+    checklist(period), freedomOverview()
   ])
   const delta = prev ? sheet.netWorth - Number(prev.netWorth) : null
   const lines = [
@@ -81,10 +96,12 @@ router.get('/summary', wrap(async (req, res) => {
     '| 科目 | 金额 | 笔数 |', '|---|---:|---:|',
     ...s.byCategory.filter((c) => c.kind !== 'INCOME').map((c) => `| ${c.code} ${c.name} | ${m(c.amount)} | ${c.count} |`), '',
     '## 四、月结检查', '',
-    ...checks.map((c) => `- [${c.ok ? 'x' : ' '}] ${c.title}：${c.detail}`), ''
+    ...checks.map((c) => `- [${c.ok ? 'x' : ' '}] ${c.title}：${c.detail}`), '',
+    '## 五、自由天数', '',
+    ...freedomLines(freedom), ''
   ]
   if (sheet.pendingItems.length) {
-    lines.push('## 五、待核实（未计入净资产）', '', ...sheet.pendingItems.map((p) => `- ${p.counterparty} ¥${m(p.balance)}：${p.remark || ''}`), '')
+    lines.push('## 六、待核实（未计入净资产）', '', ...sheet.pendingItems.map((p) => `- ${p.counterparty} ¥${m(p.balance)}：${p.remark || ''}`), '')
   }
   return ok(res, { markdown: lines.filter((l) => l !== null).join('\n') })
 }))

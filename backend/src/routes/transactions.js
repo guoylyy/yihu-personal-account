@@ -16,7 +16,7 @@ import { currentUserId } from '../lib/tenant.js'
 
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
-const include = { account: { select: { id: true, name: true, type: true } }, category: { select: { id: true, code: true, name: true, kind: true } } }
+const include = { account: { select: { id: true, name: true, type: true } }, category: { select: { id: true, code: true, name: true, kind: true, groupName: true } } }
 
 function buildWhere(q) {
   const where = { deletedAt: null, userId: currentUserId() }

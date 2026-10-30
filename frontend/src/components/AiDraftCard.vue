@@ -12,7 +12,10 @@
     <template v-else>
       <div class="d-head">
         <span class="d-kind">{{ kind }}</span>
-        <span class="money d-amount" :class="amountClass">{{ amountText }}</span>
+        <span class="d-amount-wrap">
+          <span class="money d-amount" :class="amountClass">{{ amountText }}</span>
+          <span v-if="costText" class="cost-days">{{ costText }}</span>
+        </span>
       </div>
 
       <div v-if="!item._edit" class="d-rows">
@@ -161,6 +164,7 @@ import api from '@/api'
 import { money } from '@/utils/format'
 import { lackOf } from '@/utils/aiDraft'
 import { accounts, categories, categoryGroups, accountOptions } from '@/composables/useMeta'
+import { costDays } from '@/composables/useFreedom'
 import { AI_TYPES, ORGS, TRADE_ACTIONS, LOAN_DIRECTIONS, LOAN_KINDS, HOLDING_TYPES } from '@/constants'
 
 const props = defineProps({
@@ -203,6 +207,14 @@ const amountText = computed(() => {
   const v = amountValue.value
   if (v === undefined || v === null || v === '') return it.type === 'holding_valuation' && it.price != null ? `价格 ${it.price}` : ''
   return it.type === 'transaction' ? `${it.direction === 'IN' ? '+' : '−'}${money(v)}` : money(v)
+})
+// 只算花出去的个人弹性支出
+const costText = computed(() => {
+  const it = props.item
+  if (it.type !== 'transaction' || it.direction === 'IN' || it.isBusiness) return ''
+  const group = categories.value.find((c) => String(c.id) === String(it.categoryId))?.groupName
+  const d = costDays(it.amount, group)
+  return d ? `≈ ${d} 天` : ''
 })
 const amountClass = computed(() => (props.item.type === 'transaction' ? (props.item.direction === 'IN' ? 'money-in' : 'money-out') : ''))
 
@@ -256,6 +268,7 @@ async function onType() {
 .d-done-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .d-kind { font-size: 12px; color: var(--text-muted); }
+.d-amount-wrap { display: inline-flex; align-items: baseline; gap: 8px; }
 .d-amount { font-size: 18px; font-weight: 700; }
 .d-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; margin-top: 8px; font-size: 13px; line-height: 1.6; }
 .d-row { min-width: 0; word-break: break-word; }

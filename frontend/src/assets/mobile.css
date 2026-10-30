@@ -150,6 +150,7 @@
   .page-sub { font-size: 14px; line-height: 1.6; }
 
   /* 统计卡单列堆叠：标签左、数值右，省高度 */
+  .cost-days { font-size: 14px; }
   .stat-grid { grid-template-columns: 1fr; gap: 8px; margin-bottom: 12px; }
   .stat-card {
     padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: baseline;

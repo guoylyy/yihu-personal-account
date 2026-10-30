@@ -17,15 +17,11 @@
         <div class="foot">总资产 {{ moneyShort(s.totalAssets) }} − 负债 {{ moneyShort(s.liabilities) }}</div>
       </div>
       <div class="stat-card">
-        <div class="label">可动用资金</div>
+        <div class="label">现金与投资</div>
         <div class="value">¥{{ moneyShort(s.liquid) }}</div>
         <div class="foot">现金 {{ moneyShort(s.cash) }} + 金融投资 {{ moneyShort(s.investments) }}</div>
       </div>
-      <div class="stat-card">
-        <div class="label">应急金覆盖</div>
-        <div class="value">{{ emergencyMonths }} <small>个月</small></div>
-        <div class="foot">按月预算支出 ¥{{ money(monthlyBudget) }}</div>
-      </div>
+      <FreedomCard :freedom="data.freedom" @open="freedomOpen = true" />
       <div class="stat-card is-success">
         <div class="label">{{ period }} 收入</div>
         <div class="value">¥{{ money(m.income) }}</div>
@@ -101,6 +97,8 @@
       </div>
       <div v-else ref="nwRef" class="chart" />
     </div>
+
+    <FreedomDrawer v-model="freedomOpen" :freedom="data.freedom" />
   </div>
 </template>
 
@@ -114,6 +112,9 @@ import { money, moneyShort, date, currentPeriod, periodOptions } from '@/utils/f
 import { ACCOUNT_TYPES, labelOf } from '@/constants'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
 import { useCharts } from '@/composables/useCharts'
+import { setFreedom } from '@/composables/useFreedom'
+import FreedomCard from '@/components/freedom/FreedomCard.vue'
+import FreedomDrawer from '@/components/freedom/FreedomDrawer.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -121,6 +122,7 @@ const period = ref(currentPeriod())
 useAiPageContext(() => ({ period: period.value }))
 const periods = periodOptions(18)
 const data = ref({})
+const freedomOpen = ref(false)
 const exec = ref({ rows: [], total: {} })
 const pieRef = ref(), trendRef = ref(), nwRef = ref()
 const { render } = useCharts()
@@ -129,7 +131,6 @@ const today = new Date().toLocaleDateString('zh-CN')
 const s = computed(() => data.value.sheet || {})
 const m = computed(() => data.value.month || {})
 const monthlyBudget = computed(() => exec.value.total?.monthlyBudget || 0)
-const emergencyMonths = computed(() => (monthlyBudget.value ? (s.value.liquid / monthlyBudget.value).toFixed(1) : '—'))
 // 有预算的按执行率从高到低（超支的先看），没预算的放后面按金额排
 const budgetRows = computed(() => exec.value.rows.filter((r) => r.actual || r.monthlyBudget)
   .sort((a, b) => (a.rate == null) - (b.rate == null) || (b.rate ?? 0) - (a.rate ?? 0) || b.actual - a.actual).slice(0, 8))
@@ -142,6 +143,7 @@ async function load() {
   try {
     const [d, e] = await Promise.all([api.dashboard.get({ period: period.value }), api.budgets.execution({ period: period.value })])
     data.value = d
+    setFreedom(d.freedom)
     exec.value = e
     await nextTick()
     draw()

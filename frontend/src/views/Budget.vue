@@ -32,6 +32,7 @@
             <template #default="{ row }">
               <div class="prog"><el-progress :percentage="Math.min(row.rate ?? 100, 100)" :show-text="false" :stroke-width="8" :color="color(row.rate)" style="flex: 1" />
                 <span class="rate" :style="{ color: color(row.rate) }">{{ row.rate == null ? '无预算' : row.rate + '%' }}</span></div>
+              <div v-if="overCost(row)" class="cost-days">超支 ¥{{ money(row.actual - row.monthlyBudget) }} ≈ {{ overCost(row) }} 天</div>
             </template>
           </el-table-column>
           <el-table-column label="年累计实际 / 预算" align="right" width="190"><template #default="{ row }"><span class="money">{{ money(row.ytdActual) }}</span> <span class="muted">/ {{ money(row.ytdBudget) }}</span></template></el-table-column>
@@ -69,6 +70,7 @@ import { useAiPageContext, onAiCommitted } from '@/composables/useAiAssistant'
 import { money, moneyShort, currentPeriod, periodOptions } from '@/utils/format'
 import { categories, loadMeta } from '@/composables/useMeta'
 import ResponsiveTable from '@/components/mobile/ResponsiveTable'
+import { costDays } from '@/composables/useFreedom'
 
 const tab = ref('exec')
 const loading = ref(false)
@@ -81,6 +83,7 @@ const editRows = ref([])
 const editTotal = computed(() => editRows.value.reduce((s, r) => s + (r.annual || 0), 0))
 
 const color = (r) => (r == null ? '#8f8a82' : r > 110 ? '#c2362b' : r > 90 ? '#b3450f' : '#2f6b55')
+const overCost = (r) => (r.monthlyBudget > 0 && r.actual > r.monthlyBudget ? costDays(r.actual - r.monthlyBudget, r.group) : null)
 const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '—')
 
 async function loadExec() {

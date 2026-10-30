@@ -105,6 +105,10 @@ export const api = {
     execution: (p) => get(`${B}/budgets/execution`, p)
   },
   dashboard: { get: (p) => get(`${B}/dashboard`, p) },
+  freedom: {
+    get: () => get(`${B}/freedom`),
+    simulate: (p) => get(`${B}/freedom/simulate`, p)
+  },
   close: {
     checklist: (p) => get(`${B}/close/checklist`, p),
     summary: (p) => get(`${B}/close/summary`, p),

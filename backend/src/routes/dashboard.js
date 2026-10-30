@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import prisma from '../lib/prisma.js'
 import { ok, wrap } from '../lib/response.js'
 import { balanceSheet, periodStats } from '../lib/networth.js'
+import { freedomOverview } from '../lib/freedom.js'
 import { lastPeriods } from '../lib/period.js'
 import { currentUserId } from '../lib/tenant.js'
 
@@ -11,13 +12,14 @@ const router = express.Router()
 router.get('/', wrap(async (req, res) => {
   const period = req.query.period || dayjs().format('YYYY-MM')
   const userId = currentUserId()
-  const [sheet, month, snapshots, accounts, pendingBiz, uncategorized] = await Promise.all([
+  const [sheet, month, snapshots, accounts, pendingBiz, uncategorized, freedom] = await Promise.all([
     balanceSheet(),
     periodStats(period),
     prisma.netWorthSnapshot.findMany({ where: { userId }, orderBy: { period: 'asc' }, take: 24 }),
     prisma.account.findMany({ where: { userId, deletedAt: null, status: 'ACTIVE' }, orderBy: [{ sort: 'asc' }, { id: 'asc' }] }),
     prisma.transaction.aggregate({ where: { userId, deletedAt: null, isBusiness: true, bizStatus: 'PENDING' }, _sum: { amount: true }, _count: true }),
-    prisma.transaction.count({ where: { userId, deletedAt: null, categoryId: null } })
+    prisma.transaction.count({ where: { userId, deletedAt: null, categoryId: null } }),
+    freedomOverview()
   ])
   const trend = []
   for (const p of lastPeriods(12, dayjs(`${period}-01`))) {
@@ -29,7 +31,7 @@ router.get('/', wrap(async (req, res) => {
   if (pendingBiz._count) alerts.push({ level: 'warn', text: `${pendingBiz._count} 笔公司款待剥离，合计 ¥${Number(pendingBiz._sum.amount || 0).toLocaleString()}`, link: '/transactions?scope=business&biz_status=PENDING' })
   for (const a of sheet.staleAccounts) alerts.push({ level: 'info', text: `「${a.name}」余额超过 35 天没校准`, link: '/accounts' })
   for (const p of sheet.pendingItems) alerts.push({ level: 'danger', text: `待核实：${p.counterparty} ¥${p.balance.toLocaleString()}（${p.direction === 'LEND' ? '应收' : '负债'}，暂不计入净资产）`, link: '/loans' })
-  return ok(res, { period, sheet, month, trend, snapshots, accounts, alerts })
+  return ok(res, { period, sheet, month, trend, snapshots, accounts, alerts, freedom })
 }))
 
 export default router
