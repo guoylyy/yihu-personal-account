@@ -75,8 +75,15 @@ export const HOLDING_STATUS = [
 ]
 export const AI_TYPES = {
   transaction: '收支', transfer: '账户互转', trade: '投资交易', holding_valuation: '持仓估值',
-  asset_valuation: '资产估值', balance: '余额校准', loan_repay: '借贷还款', new_loan: '新增借贷', new_holding: '新增持仓'
+  asset_valuation: '资产估值', balance: '余额校准', loan_repay: '借贷还款', new_loan: '新增借贷', new_holding: '新增持仓',
+  new_asset: '新增资产', new_account: '新增账户', set_budget: '设预算'
 }
+// 修改已有记录：目标定了就不能换类型，不进上面的下拉
+export const AI_UPDATE_TYPES = {
+  update_transaction: '修改流水', update_account: '修改账户', update_holding: '修改持仓', update_asset: '修改资产', update_loan: '修改借贷'
+}
+// 不动钱，只改资料：卡片上按钮说「确认」不说「入账」
+export const AI_DATA_TYPES = ['new_asset', 'new_account', 'set_budget', 'update_account', 'update_holding', 'update_asset', 'update_loan']
 
 export const labelOf = (list, v) => list?.find((x) => x.value === v)?.label ?? v ?? '—'
 export const tagOf = (list, v) => list?.find((x) => x.value === v)?.tag ?? ''

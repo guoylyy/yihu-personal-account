@@ -5,6 +5,7 @@ import prisma from './prisma.js'
 import { resolveUid } from './tenant.js'
 import { fmtDate } from './period.js'
 import { TXN_CODE, isEditLine, textLines } from './aiIntent.js'
+import { UPDATE_TYPES } from './aiMaster.js'
 
 export class ContextError extends Error {
   constructor(message, code = 9002) { super(message); this.code = code }
@@ -132,6 +133,20 @@ async function resolveTarget(it, pins, codes, userId) {
   return { ask: pins.length > 1 ? `你 @ 了 ${pins.length} 笔流水，这句说的是哪一笔？` : TARGET_ASK }
 }
 
+/** 改基础资料定目标：name 由 resolveItems 按当前用户的列表对；否则只认 @。模型给的 id 一律不算数 */
+function applyMasterTarget(it, cfg, refs) {
+  delete it.targetId
+  delete it[cfg.idKey]
+  const pins = refs.pinned.filter((p) => p.type === cfg.pin)
+  if (pins.length === 1) {
+    it.targetId = pins[0].id
+    it.targetSummary = pins[0].label
+    it.refSource = { targetId: 'pinned' }
+  }
+  if (it[cfg.nameKey] || it.targetId) return null
+  return pins.length ? `你 @ 了 ${pins.length} 条${cfg.label}，这句说的是哪一条？` : `要改哪个${cfg.label}？写上名字，或在列表上点 @ 引用它。`
+}
+
 // 不同类型的草稿，@ 和筛选能默认哪个字段。name 有值说明用户（或模型）已经点名，点名优先
 const PIN_DEFAULTS = {
   transaction: [['account', 'account', 'accountId']],
@@ -180,6 +195,12 @@ export async function applyRefs(items, refs, text = '') {
   const asks = []
   for (const raw of items || []) {
     const it = { ...raw }
+    const master = UPDATE_TYPES[it.type]
+    if (master) {
+      const ask = applyMasterTarget(it, master, r)
+      if (ask) { if (!asks.includes(ask)) asks.push(ask) } else out.push(it)
+      continue
+    }
     if (it.type !== 'update_transaction') { out.push(applyDefaults(it, r)); continue }
     const { target, code, ask } = await resolveTarget(it, pins, codes, userId)
     if (ask) { if (!asks.includes(ask)) asks.push(ask); continue }
@@ -192,7 +213,7 @@ export async function applyRefs(items, refs, text = '') {
   }
   // 模型没用 update_transaction、新建了一笔，但用户说的全是「改这笔」：这种草稿入账就是错账
   const lines = textLines(text)
-  if (lines.length && lines.every(isEditLine) && !out.some((x) => x.type === 'update_transaction')) {
+  if (lines.length && lines.every(isEditLine) && !out.some((x) => x.type === 'update_transaction' || UPDATE_TYPES[x.type])) {
     return { items: [], question: asks.length ? asks.join(' ') : TARGET_ASK }
   }
   return { items: out, question: asks.length ? asks.join(' ') : null }

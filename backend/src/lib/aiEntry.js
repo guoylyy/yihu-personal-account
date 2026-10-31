@@ -10,6 +10,7 @@ import { toDate } from './period.js'
 import { resolveUid } from './tenant.js'
 import { parseDate, parseMoney, isEditLine, parseEditLine, textLines } from './aiIntent.js'
 import { applyRefs, contextPrompt } from './aiContext.js'
+import { UPDATE_TYPES, MASTER_TYPES, ASSET_KINDS, ACCOUNT_KINDS, commitMaster } from './aiMaster.js'
 
 export const ITEM_TYPES = {
   transaction: '收支',
@@ -21,25 +22,32 @@ export const ITEM_TYPES = {
   loan_repay: '借贷还款',
   new_loan: '新增借贷',
   new_holding: '新增持仓',
-  update_transaction: '修改流水'
+  update_transaction: '修改流水',
+  ...MASTER_TYPES
 }
+
+// 这两种的金额是余额，可以为负（信用卡欠款）
+export const SIGNED_AMOUNT = new Set(['balance', 'new_account'])
+// 没说日期就是没有，不用今天顶替
+const NO_DEFAULT_DATE = new Set(['update_transaction', 'new_asset', 'set_budget', ...Object.keys(UPDATE_TYPES)])
 
 // ─────────── 上下文：告诉模型你有哪些账户、科目、持仓 ───────────
 async function buildContext() {
   const userId = resolveUid()
-  const [accounts, categories, holdings, assets, loans] = await Promise.all([
+  const [accounts, categories, holdings, assets, loans, budgets] = await Promise.all([
     prisma.account.findMany({ where: { userId, deletedAt: null, status: 'ACTIVE' }, orderBy: { sort: 'asc' } }),
     prisma.category.findMany({ where: { userId, deletedAt: null }, orderBy: { sort: 'asc' } }),
     prisma.holding.findMany({ where: { userId, deletedAt: null, status: 'HOLDING' } }),
     prisma.fixedAsset.findMany({ where: { userId, deletedAt: null } }),
-    prisma.loan.findMany({ where: { userId, deletedAt: null, status: { not: 'SETTLED' } } })
+    prisma.loan.findMany({ where: { userId, deletedAt: null, status: { not: 'SETTLED' } } }),
+    prisma.budget.findMany({ where: { userId, year: dayjs().year() } })
   ])
-  return { accounts, categories, holdings, assets, loans }
+  return { accounts, categories, holdings, assets, loans, budgets }
 }
 
 function systemPrompt(ctx, refs) {
   const today = dayjs().format('YYYY-MM-DD dddd')
-  return `你是一个个人记账助手，把用户输入的自然语言或账单截图，解析成可入账的结构化条目。今天是 ${today}（Asia/Shanghai）。
+  return `你是一个个人记账助手，把用户输入的自然语言或账单截图，解析成可入账的结构化条目，也负责新增和修改账户、持仓、资产、借贷、预算这些资料。今天是 ${today}（Asia/Shanghai）。
 
 ## 用户的账户（account / toAccount 字段填这里的「名称」）
 ${ctx.accounts.map((a) => `- ${a.name}（${a.type}${a.lastNo ? ' 尾号' + a.lastNo : ''}${a.aliases ? '，别名：' + a.aliases : ''}）`).join('\n')}
@@ -51,10 +59,10 @@ ${ctx.categories.map((c) => `- ${c.code} ${c.name} [${c.kind}${c.groupName ? '/'
 ${ctx.holdings.map((h) => `- ${h.name}${h.code ? '(' + h.code + ')' : ''} [${h.type}]`).join('\n') || '（暂无）'}
 
 ## 固定资产（asset 字段填名称）
-${ctx.assets.map((a) => `- ${a.name} [${a.type}]`).join('\n') || '（暂无）'}
+${ctx.assets.map((a) => `- ${a.name} [${a.type}] 估值 ${a.currentValue}`).join('\n') || '（暂无）'}
 
 ## 借贷（loan 字段填对方名称）
-${ctx.loans.map((l) => `- ${l.counterparty}（${l.direction === 'LEND' ? '我借出' : '我借入'}，${l.kind}）`).join('\n') || '（暂无）'}
+${ctx.loans.map((l) => `- ${l.counterparty}（${l.direction === 'LEND' ? '我借出' : '我借入'}，${l.kind}，未还 ${l.balance}${l.monthlyPayment != null ? `，月供 ${l.monthlyPayment}` : ''}${l.annualRate != null ? `，年利率 ${l.annualRate}%` : ''}）`).join('\n') || '（暂无）'}
 
 ## 记账口径
 - 只记实际发生的钱。夫妻/家庭内部划转用 T4。还信用卡、转余额宝等自己账户之间的钱用 transfer 类型。
@@ -64,9 +72,14 @@ ${ctx.loans.map((l) => `- ${l.counterparty}（${l.direction === 'LEND' ? '我借
 - 一段话里有几笔就拆成几条；截图里每一笔交易都是一条。看不清/不确定的字段留 null，并在 note 里说明。
 - 用户没说的字段不要编：isBusiness 没提就留 null；金额没说就留 null。
 - 「把这笔改成餐饮」是改已有流水，用 update_transaction，不要新建收支。「这笔还信用卡」指把这笔流水改成信用卡还款（categoryCode 用 T2）。
+- 登记房产、车辆、大件用 new_asset，不要记成支出。它只登记资产，不动账户余额；用户说了从哪个账户付的，在 note 里写「账户余额没有扣，需要的话再记一笔」。
+- 「这套房现在值 300 万」是已有资产的估值，用 asset_valuation，不是 update_asset。账户余额不对用 balance，持仓市值用 holding_valuation，还款用 loan_repay；update_* 不能改余额、市值和未还本金。
+- 年利率一律填百分数：3.85% 填 3.85，不要填 0.0385。
+- 借贷的月供、利率这些资料，已有记录用 update_loan，新的用 new_loan。new_loan 同样不动账户余额，用户说了账户时在 note 里提醒。
 
 ## 你能做什么、怎么说话
-你能记收支、转账、买卖、还款、资产估值、余额校准，也能新增借贷和持仓、改已有流水。不确定就问，不要猜。
+你能记收支、转账、买卖、还款、资产估值、余额校准，能新增账户、持仓、资产、借贷，能修改已有的流水、账户、持仓、资产、借贷，能设预算。在哪个页面都能做，当前页面只是上下文。一段话说了几件事就出几条。不确定就问，不要猜。
+删除或作废记录你做不了：items 留空，在 question 里说请到对应页面操作。
 - 金额能确定的先出草稿，缺的字段留 null，用户可以在草稿上补。
 - question 只写一句，只问最关键的一个字段，比如「这笔从哪个账户出的？」；不要一次列多个待填项，不要复述草稿内容。
 - note 一句话以内，只写不确定之处，没有就留空。
@@ -79,6 +92,7 @@ ${ctx.loans.map((l) => `- ${l.counterparty}（${l.direction === 'LEND' ? '我借
 3. 当前页面的筛选条件
 4. 都不确定就问：不要猜，items 留空，在 question 里问一句
 没有 @ 引用、用户也没写流水编号时，「这笔」指哪一条是不确定的，必须问。@ 了多条又分不清指哪条时也要问。
+update_account / update_holding / update_asset / update_loan 用名称字段点名要改哪一条，指的是 @ 的那条时名称字段留空。
 ${contextPrompt(refs)}
 ## 输出
 只输出一个 JSON 对象，不要任何解释：
@@ -92,9 +106,17 @@ ${contextPrompt(refs)}
 - asset_valuation：date, asset, amount(新估值), description
 - balance：date, account, amount(该账户当前真实余额)
 - loan_repay：date, loan, principal, interest, account
-- new_loan：date, direction("LEND"|"BORROW"), counterparty, amount, kind("PERSONAL"|"COMPANY"|"MORTGAGE"|"OTHER"), description
+- new_loan：date, direction("LEND"|"BORROW"), counterparty, amount, kind("PERSONAL"|"COMPANY"|"MORTGAGE"|"CAR"|"CONSUMER"|"OTHER"), monthlyPayment, annualRate, dueDate, description
 - new_holding：date, holding(名称), holdingType("STOCK"|"FUND"|"WEALTH"|"DEPOSIT"|"INSURANCE"|"EQUITY"|"OTHER"), code, platform, quantity, price, amount, account
-- update_transaction：targetId(@ 引用里的流水 id) 或 targetCode(用户写的流水编号，如 T-202610-00012)，再加要改的字段，没改的不要填：date, direction, amount, account, categoryCode, counterparty, description, isBusiness, businessOrg`
+- update_transaction：targetId(@ 引用里的流水 id) 或 targetCode(用户写的流水编号，如 T-202610-00012)，再加要改的字段，没改的不要填：date, direction, amount, account, categoryCode, counterparty, description, isBusiness, businessOrg
+- new_asset：assetName, assetType("PROPERTY"|"VEHICLE"|"OTHER"), amount(现在的估值), purchasePrice, date(买入日期，没说留 null), address, description
+- new_account：accountName, accountType("BANK"|"WECHAT"|"ALIPAY"|"CASH"|"CREDIT"), institution, lastNo(尾号), amount(当前余额，信用卡欠款填负数), date, creditLimit, billDay, repayDay
+- set_budget：categoryCode, year(没说留 null), monthly(月度额) 或 annual(年度额)。一个科目一条
+以下只填要改的字段，没改的不要填：
+- update_account：account(要改哪个，现在的名称), newName, institution, lastNo, creditLimit, billDay, repayDay, aliases, status("ACTIVE"|"CLOSED"), remark
+- update_holding：holding(要改哪个), newName, code, platform, maturityDate, annualRate, remark
+- update_asset：asset(要改哪个), newName, address, purchaseDate, purchasePrice, status("HOLDING"|"SOLD"), remark
+- update_loan：loan(要改哪笔，对方名称), counterparty(新的对方名), kind, monthlyPayment, annualRate, dueDate, contractNo, remark`
 }
 
 // ─────────── 规则解析（AI 不可用时兜底，只识别收支和「改这笔」）───────────
@@ -121,6 +143,15 @@ export async function ruleParse(text, ctx) {
 
 // ─────────── 把名字对上 id，并套用学到的规则 ───────────
 const norm = (s) => String(s || '').toLowerCase().replace(/\s/g, '')
+// 要改已有记录时不能猜：同名命中多条算没找到，让用户说清楚
+function uniqueFind(list, name, keys) {
+  const n = norm(name)
+  const exact = list.filter((x) => keys.some((k) => norm(x[k]) === n))
+  if (exact.length) return exact.length === 1 ? exact[0] : null
+  const near = list.filter((x) => keys.some((k) => x[k] && (norm(x[k]).includes(n) || n.includes(norm(x[k])))))
+  return near.length === 1 ? near[0] : null
+}
+
 function fuzzyFind(list, name, keys) {
   if (!name) return null
   const n = norm(name)
@@ -135,8 +166,8 @@ export async function resolveItems(items, ctx) {
     const it = { ...raw, type: ITEM_TYPES[raw.type] ? raw.type : 'transaction' }
     const edit = it.type === 'update_transaction'
     if (it.date && dayjs(it.date).isValid()) it.date = dayjs(it.date).format('YYYY-MM-DD')
-    else it.date = edit ? null : dayjs().format('YYYY-MM-DD') // 改流水没提日期 = 不改日期
-    if (it.amount != null) it.amount = round2(Math.abs(Number(it.amount)))
+    else it.date = NO_DEFAULT_DATE.has(it.type) ? null : dayjs().format('YYYY-MM-DD') // 改流水没提日期 = 不改日期
+    if (it.amount != null) it.amount = round2(SIGNED_AMOUNT.has(it.type) ? Number(it.amount) : Math.abs(Number(it.amount)))
 
     if (it.account) {
       const a = fuzzyFind(ctx.accounts, it.account, ['name', 'lastNo']) || (await matchAccount(it.account))
@@ -162,7 +193,7 @@ export async function resolveItems(items, ctx) {
       it.categoryId = c ? String(c.id) : it.categoryId || null // 只带 id 没带代码时保留（归属在入账时校验）
       it.aiCategoryCode = it.categoryCode || null
     }
-    if (edit && it.categoryCode) {
+    if ((edit || it.type === 'set_budget') && it.categoryCode) {
       const c = ctx.categories.find((x) => x.code === it.categoryCode)
       it.categoryId = c ? String(c.id) : null
     }
@@ -178,7 +209,13 @@ export async function resolveItems(items, ctx) {
       const l = fuzzyFind(ctx.loans, it.loan, ['counterparty'])
       it.loanId = l ? String(l.id) : null
     }
-    it.warnings = warningsOf(it)
+    const master = UPDATE_TYPES[it.type]
+    if (master) {
+      const hit = it[master.nameKey] ? uniqueFind(ctx[master.ctx], it[master.nameKey], master.keys) : null
+      if (hit) { it.targetId = String(hit.id); it.targetSummary = master.title(hit) }
+      it[master.idKey] = it.targetId || null
+    }
+    it.warnings = [...warningsOf(it), ...masterWarnings(it, ctx)]
     it.missing = missingOf(it)
     out.push(it)
   }
@@ -202,6 +239,25 @@ function warningsOf(it) {
 }
 
 const CHANGE_FIELDS = ['date', 'direction', 'amount', 'accountId', 'categoryId', 'counterparty', 'description', 'isBusiness', 'businessOrg']
+function masterWarnings(it, ctx) {
+  const w = []
+  const named = (list, name) => list.some((x) => norm(x.name) === norm(name))
+  if (it.type === 'new_account' && named(ctx.accounts, it.accountName)) w.push(`已经有账户「${it.accountName}」，确认要再建一个`)
+  if (it.type === 'new_asset' && named(ctx.assets, it.assetName)) w.push(`已经有资产「${it.assetName}」，要更新估值请用资产估值`)
+  if (it.type === 'update_account' && it.status === 'CLOSED') {
+    const a = ctx.accounts.find((x) => String(x.id) === String(it.targetId))
+    if (a && Number(a.balance)) w.push(`这个账户还有余额 ${a.balance}，停用后不再计入资产`)
+  }
+  if (it.annualRate != null && Number(it.annualRate) > 0 && Number(it.annualRate) < 0.5) w.push('年利率按百分数填，3.85% 写 3.85')
+  if (it.type === 'set_budget' && it.categoryId) {
+    const c = ctx.categories.find((x) => String(x.id) === String(it.categoryId))
+    if (c && c.kind !== 'EXPENSE') w.push('预算只能设在支出科目上')
+    const b = ctx.budgets.find((x) => String(x.categoryId) === String(it.categoryId) && x.year === (Number(it.year) || dayjs().year()))
+    if (b) w.push(`现在的月预算是 ${b.monthlyAmount}，确认后覆盖`)
+  }
+  return w
+}
+
 const has = (v) => v !== undefined && v !== null && v !== ''
 const positive = (v) => has(v) && Number(v) > 0
 
@@ -223,13 +279,21 @@ export function missingOf(it) {
     case 'new_loan': need(has(it.counterparty), 'counterparty'); need(positive(it.amount), 'amount'); break
     case 'new_holding': need(has(it.holding), 'holding'); break
     case 'update_transaction': need(it.targetId, 'targetId'); need(CHANGE_FIELDS.some((k) => has(it[k])), 'changes'); break
+    case 'new_asset': need(has(it.assetName), 'assetName'); need(ASSET_KINDS.includes(it.assetType), 'assetType'); need(has(it.amount) || has(it.purchasePrice), 'amount'); break
+    case 'new_account': need(has(it.accountName), 'accountName'); need(ACCOUNT_KINDS.includes(it.accountType), 'accountType'); break
+    case 'set_budget': need(it.categoryId, 'categoryId'); need(has(it.monthly) || has(it.annual), 'budgetAmount'); break
+  }
+  if (UPDATE_TYPES[it.type]) {
+    need(it.targetId, 'targetId')
+    need(Object.keys(UPDATE_TYPES[it.type].fields).some((k) => has(it[k])), 'changes')
   }
   return m
 }
 
 export const MISSING_LABELS = {
   amount: '金额', accountId: '账户', toAccountId: '转入账户', holdingId: '持仓', action: '买卖方向', assetId: '资产', loanId: '借贷记录',
-  principal: '本金或利息', counterparty: '对方', holding: '持仓名称', targetId: '要改的流水', changes: '要改的内容'
+  principal: '本金或利息', counterparty: '对方', holding: '持仓名称', targetId: '要改的记录', changes: '要改的内容',
+  assetName: '资产名称', assetType: '资产类型', accountName: '账户名称', accountType: '账户类型', categoryId: '科目', budgetAmount: '预算金额'
 }
 
 // ─────────── 对外：解析 ───────────
@@ -265,7 +329,15 @@ export async function parseEntry({ text = '', images = [], refs = null }) {
   }
   const applied = await applyRefs(items, refs, text)
   question = question || applied.question
-  const resolved = await resolveItems(applied.items, ctx)
+  const all = await resolveItems(applied.items, ctx)
+  // 改资料对不上是哪条：不出草稿，免得用户在卡上补不了目标
+  const lost = all.filter((it) => UPDATE_TYPES[it.type] && !it.targetId)
+  const resolved = all.filter((it) => !lost.includes(it))
+  if (lost.length && !question) {
+    const it = lost[0]
+    const cfg = UPDATE_TYPES[it.type]
+    question = `「${it[cfg.nameKey]}」对不上${cfg.label}，可能重名或不存在。写全名，或在列表上点 @ 引用它。`
+  }
   const log = await prisma.aiEntryLog.create({
     data: { userId: resolveUid(), input: text.slice(0, 60000), hasImage: images.length > 0, provider: provider.slice(0, 30), output: resolved, error, ms: Date.now() - t0 }
   })
@@ -289,6 +361,7 @@ export async function commitItems(items, { logId } = {}) {
 /** 入账一条，返回 { id, ref }：id 是产生/修改的业务记录，ref 是给人看的编号或摘要 */
 export async function commitOne(it) {
   const src = { source: 'AI' }
+  if (MASTER_TYPES[it.type]) return commitMaster(it)
   switch (it.type) {
     case 'transaction': {
       const row = await createTransaction({
@@ -340,7 +413,8 @@ export async function commitOne(it) {
         data: {
           userId: resolveUid(),
           direction: it.direction === 'BORROW' ? 'BORROW' : 'LEND', kind: it.kind || 'PERSONAL', counterparty: it.counterparty || '未命名',
-          principal: it.amount, balance: it.amount, startDate: toDate(it.date), remark: it.description || null
+          principal: it.amount, balance: it.amount, startDate: toDate(it.date), remark: it.description || null,
+          monthlyPayment: has(it.monthlyPayment) ? Number(it.monthlyPayment) : null, annualRate: has(it.annualRate) ? Number(it.annualRate) : null, dueDate: toDate(it.dueDate)
         }
       })
       return { id: l.id, ref: `借贷 #${l.id}` }

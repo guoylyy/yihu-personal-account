@@ -19,7 +19,7 @@
       </div>
     </header>
     <div class="ai-hint">
-      <span>说一句话就能记，草稿确认后才入账</span>
+      <span>记账、登记资产、改资料、设预算都能说，确认后才生效</span>
       <el-button v-if="!compact" text circle class="ai-clear" aria-label="清空对话" title="清空对话" :disabled="!messages.length || !!sending" @click="clearChat">
         <el-icon :size="16"><Delete /></el-icon>
       </el-button>
@@ -33,7 +33,7 @@
 
     <div ref="listRef" class="ai-messages">
       <div v-if="!messages.length" class="ai-empty">
-        <p>记账、问账都可以直接说，一次可以说几笔，也可以贴账单截图。例如：</p>
+        <p>记账、问账、登记资产、改账户和借贷资料、设预算都可以直接说，一次可以说几件事，也可以贴账单截图。例如：</p>
         <p class="eg" role="button" tabindex="0" @click="text = EXAMPLE" @keydown.enter="text = EXAMPLE">「{{ EXAMPLE }}」</p>
         <p v-if="status && !status.enabled">{{ status.hint }}</p>
       </div>
@@ -51,7 +51,7 @@
     </div>
 
     <div v-if="pendingDrafts.length" class="commit-bar">
-      <el-button type="primary" :loading="committing" @click="commit">确认入账（{{ pendingDrafts.length }}）</el-button>
+      <el-button type="primary" :loading="committing" @click="commit">全部确认（{{ pendingDrafts.length }}）</el-button>
     </div>
 
     <div class="composer" @paste="onPaste" @dragover.prevent @drop.prevent="onDrop">
@@ -63,7 +63,7 @@
       </div>
       <div class="composer-row">
         <el-input v-model="text" class="composer-input" type="textarea" :autosize="{ minRows: 1, maxRows: 5 }" resize="none"
-                  :placeholder="isMobile ? '说一笔账，或问个问题' : '说一笔账，或问个问题（Enter 发送）'" @keydown="onKeydown" />
+                  :placeholder="isMobile ? '说一笔账，或问个问题' : '说要记的账、要改的资料，或问个问题（Enter 发送）'" @keydown="onKeydown" />
         <div class="composer-actions">
           <el-upload class="img-upload" :show-file-list="false" accept="image/*" multiple :auto-upload="false" :on-change="onFile">
             <el-button text circle class="img-btn" aria-label="上传截图" title="上传截图"><el-icon :size="18"><Picture /></el-icon></el-button>
@@ -176,10 +176,10 @@ async function clearChat() {
 function replyOf(r, drafts) {
   if (r.question) return { reply: r.question, asking: true }
   const prefix = r.notice ? `${r.notice}。` : ''
-  if (drafts.length > 1) return { reply: `${prefix}拆成 ${drafts.length} 笔，${drafts.some((d) => lackOf(d).length) ? '标红的补一下再入账' : '核对后入账'}。` }
+  if (drafts.length > 1) return { reply: `${prefix}拆成 ${drafts.length} 条，${drafts.some((d) => lackOf(d).length) ? '标红的补一下再确认' : '核对后确认'}。` }
   // 规则兜底没有模型帮忙合并回答，反问了也接不住，缺的就让用户在卡片上改
   const ask = r.provider?.startsWith('rule') ? null : LACK_ASK[lackOf(drafts[0])[0]]
-  return ask ? { reply: ask, asking: true } : { reply: `${prefix}草稿好了，核对后入账。` }
+  return ask ? { reply: ask, asking: true } : { reply: `${prefix}草稿好了，核对后确认。` }
 }
 
 /** 记账：有待回答的反问时把这句并进原话重新识别，新草稿取代上一轮没入账的 */
@@ -292,7 +292,7 @@ async function commit() {
   const dups = done.filter((r) => r.duplicate).length
   const okN = done.length - dups
   const bad = todo.length - done.length
-  const parts = [okN && `已入账 ${okN} 条`, dups && `${dups} 条刚才已记过`, bad && `${bad} 条没入账，改一下再提交`].filter(Boolean)
+  const parts = [okN && `已确认 ${okN} 条`, dups && `${dups} 条刚才已记过`, bad && `${bad} 条没成功，改一下再提交`].filter(Boolean)
   addMessage({ role: 'assistant', content: parts.join('，'), warn: !!bad })
   if (okN) afterCommit()
 }

@@ -9,7 +9,8 @@ import prisma from './prisma.js'
 import { resolveUid } from './tenant.js'
 import { logAudit } from './audit.js'
 import { round2 } from './money.js'
-import { commitOne, missingOf, ITEM_TYPES, MISSING_LABELS } from './aiEntry.js'
+import { commitOne, missingOf, ITEM_TYPES, MISSING_LABELS, SIGNED_AMOUNT } from './aiEntry.js'
+import { UPDATE_TYPES, isUpdateType } from './aiMaster.js'
 
 export const DUP_WINDOW_MS = 60_000
 const WAIT_MS = 15_000
@@ -28,11 +29,15 @@ const CONTENT_FIELDS = {
   asset_valuation: ['date', 'assetId', 'amount', 'description'],
   balance: ['date', 'accountId', 'amount'],
   loan_repay: ['date', 'loanId', 'principal', 'interest', 'accountId'],
-  new_loan: ['date', 'direction', 'counterparty', 'amount', 'kind', 'description'],
+  new_loan: ['date', 'direction', 'counterparty', 'amount', 'kind', 'monthlyPayment', 'annualRate', 'dueDate', 'description'],
   new_holding: ['date', 'holding', 'holdingType', 'code', 'platform', 'quantity', 'price', 'amount', 'accountId'],
-  update_transaction: ['date', 'direction', 'amount', 'accountId', 'categoryId', 'counterparty', 'description', 'isBusiness', 'businessOrg']
+  update_transaction: ['date', 'direction', 'amount', 'accountId', 'categoryId', 'counterparty', 'description', 'isBusiness', 'businessOrg'],
+  new_asset: ['date', 'assetName', 'assetType', 'amount', 'purchasePrice', 'address', 'description'],
+  new_account: ['date', 'accountName', 'accountType', 'institution', 'lastNo', 'amount', 'creditLimit', 'billDay', 'repayDay'],
+  set_budget: ['categoryId', 'year', 'monthly', 'annual'],
+  ...Object.fromEntries(Object.entries(UPDATE_TYPES).map(([type, cfg]) => [type, Object.keys(cfg.fields)]))
 }
-const NUMERIC = new Set(['amount', 'quantity', 'price', 'fee', 'principal', 'interest'])
+const NUMERIC = new Set(['amount', 'quantity', 'price', 'fee', 'principal', 'interest', 'purchasePrice', 'creditLimit', 'billDay', 'repayDay', 'monthly', 'annual', 'year', 'monthlyPayment', 'annualRate'])
 
 /** 规范化：键排序；空值、false 不影响写入结果，一律去掉；字符串去首尾空格 */
 export function canonical(v) {
@@ -147,12 +152,12 @@ async function claimFingerprint(fp, draft, userId) {
 // 请求体可带用户改过的内容；类型可在收支类之间切换，但修改目标只认落库的
 function itemOf(draft, body) {
   const edited = isPlainObject(body) ? body : draft.payload
-  const type = draft.type === 'update_transaction' ? draft.type : edited.type || draft.type
+  const type = isUpdateType(draft.type) ? draft.type : edited.type || draft.type
   if (!ITEM_TYPES[type]) return { error: `不支持的类型：${type}` }
-  if (type === 'update_transaction' && draft.type !== type) return { error: '不能把这张草稿改成修改流水，请重新解析' }
+  if (isUpdateType(type) && draft.type !== type) return { error: '不能把这张草稿改成修改操作，请重新解析' }
   const item = { ...edited, type, targetId: draft.targetId != null ? String(draft.targetId) : undefined }
   if (item.date && dayjs(item.date).isValid()) item.date = dayjs(item.date).format('YYYY-MM-DD')
-  if (item.amount != null && item.amount !== '' && type !== 'balance') item.amount = round2(Math.abs(Number(item.amount)))
+  if (item.amount != null && item.amount !== '' && !SIGNED_AMOUNT.has(type)) item.amount = round2(Math.abs(Number(item.amount)))
   return { item }
 }
 

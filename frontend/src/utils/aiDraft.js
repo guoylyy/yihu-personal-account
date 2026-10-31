@@ -14,7 +14,10 @@ const NEED = {
   balance: [[set('accountId'), '账户'], [set('amount'), '金额']],
   loan_repay: [[set('loanId'), '借贷'], [(it) => pos(it.principal) || pos(it.interest), '本金或利息']],
   new_loan: [[set('counterparty'), '对方'], [amount, '金额']],
-  new_holding: [[set('holding'), '持仓名称']]
+  new_holding: [[set('holding'), '持仓名称']],
+  new_asset: [[set('assetName'), '资产名称'], [set('assetType'), '资产类型'], [(it) => has(it.amount) || has(it.purchasePrice), '估值']],
+  new_account: [[set('accountName'), '账户名称'], [set('accountType'), '账户类型']],
+  set_budget: [[set('categoryId'), '科目'], [(it) => has(it.monthly) || has(it.annual), '预算金额']]
 }
 
 /** 还缺的字段（中文），按该问的先后排 */
@@ -23,7 +26,8 @@ export const lackOf = (it) => (NEED[it.type] || []).filter(([ok]) => !ok(it)).ma
 // 一次只问一个
 export const LACK_ASK = {
   金额: '金额是多少？', 账户: '这笔从哪个账户出的？', 科目: '这笔算什么科目？', 转出账户: '从哪个账户转出？', 转入账户: '转到哪个账户？',
-  持仓: '是哪个持仓？', 买卖方向: '是买入还是卖出？', 资产: '是哪项资产？', 借贷: '是哪笔借贷？', 本金或利息: '本金和利息各多少？', 对方: '对方是谁？', 持仓名称: '持仓叫什么？'
+  持仓: '是哪个持仓？', 买卖方向: '是买入还是卖出？', 资产: '是哪项资产？', 借贷: '是哪笔借贷？', 本金或利息: '本金和利息各多少？', 对方: '对方是谁？', 持仓名称: '持仓叫什么？',
+  资产名称: '这项资产叫什么？', 资产类型: '是房产、车辆还是其他大件？', 估值: '现在值多少？', 账户名称: '账户叫什么？', 账户类型: '是银行卡、微信、支付宝、现金还是信用卡？', 预算金额: '预算多少？'
 }
 
 const DATE_NUM = /\d{4}[-/.年]\d{1,2}(?:[-/.月]\d{1,2}[日号]?)?|\d{1,2}月(?:\d{1,2}[日号]?)?|\d+\s*(?:个月|年|季度|周|天)/g

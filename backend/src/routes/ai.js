@@ -85,15 +85,25 @@ router.post('/ask', wrap(async (req, res) => {
   const q = String(req.body.question || '').trim()
   if (!q) return badRequest(res, '请输入问题')
   const periods = Array.from({ length: 6 }, (_, i) => dayjs().subtract(5 - i, 'month').format('YYYY-MM'))
-  const [sheet, stats, budgets, freedom] = await Promise.all([
+  const userId = currentUserId()
+  const live = { userId, deletedAt: null }
+  const [sheet, stats, budgets, freedom, accounts, holdings, assets, loans] = await Promise.all([
     balanceSheet(),
     Promise.all(periods.map((p) => periodStats(p))),
     prisma.budget.findMany({ where: { year: dayjs().year(), userId: currentUserId() }, include: { category: true } }),
-    freedomOverview()
+    freedomOverview(),
+    prisma.account.findMany({ where: { ...live, status: 'ACTIVE' } }),
+    prisma.holding.findMany({ where: { ...live, status: 'HOLDING' } }),
+    prisma.fixedAsset.findMany({ where: live }),
+    prisma.loan.findMany({ where: { ...live, status: { not: 'SETTLED' } } })
   ])
   const context = {
     资产负债表: sheet,
     近6个月收支: stats.map((s) => ({ 月份: s.period, 收入: s.income, 个人支出: s.expense, 公司款: s.business, 科目: s.byCategory.slice(0, 12).map((c) => `${c.code}${c.name}:${c.amount}`) })),
+    账户: accounts.map((a) => ({ 名称: a.name, 类型: a.type, 余额: a.balance, 账单日: a.billDay, 还款日: a.repayDay })),
+    持仓: holdings.map((h) => ({ 名称: h.name, 类型: h.type, 市值: h.marketValue, 成本: h.costAmount })),
+    固定资产: assets.map((a) => ({ 名称: a.name, 类型: a.type, 估值: a.currentValue, 买入价: a.purchasePrice, 买入日期: a.purchaseDate, 状态: a.status })),
+    借贷: loans.map((l) => ({ 对方: l.counterparty, 方向: l.direction, 类型: l.kind, 未还: l.balance, 月供: l.monthlyPayment, 年利率百分数: l.annualRate, 到期: l.dueDate })),
     今年预算: budgets.map((b) => `${b.category.code}${b.category.name}: 月 ${b.monthlyAmount}`),
     自由天数: { 状态: freedom.state, 可动用资金: freedom.available, 每日净消耗: freedom.daily, 天数: freedom.days, 见底日期: freedom.depleteDate, 提示: freedom.warnings.map((w) => w.text) }
   }

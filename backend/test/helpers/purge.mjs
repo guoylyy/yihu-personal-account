@@ -13,6 +13,7 @@ const AUDIT_ENTITIES = {
   loan: ['借贷', 'loan'],
   account: ['账户', 'account'],
   category: ['科目'],
+  budget: ['预算'],
   aiDraft: ['aiDraft']
 }
 
